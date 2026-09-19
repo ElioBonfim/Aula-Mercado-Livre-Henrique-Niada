@@ -554,7 +554,7 @@ function consumirEstadoOAuth(state) {
 // Cada categoria do ML tem regras próprias (código de barras, tabela de medidas…). Em vez de
 // mostrar o erro em inglês, diz QUAIS campos faltam, com o nome em português, e devolve os
 // ids para a tela acrescentá-los à ficha técnica. Vale para qualquer categoria.
-async function explicarRecusa(e, categoria) {
+async function explicarRecusa(e, categoria, payload = null) {
   const causas = (Array.isArray(e.body?.cause) ? e.body.cause : []).filter((c) => c?.type !== 'warning');
   const ids = new Set();
   for (const c of causas) {
@@ -567,6 +567,15 @@ async function explicarRecusa(e, categoria) {
   const attrs = await fetch(`${API}/categories/${categoria}/attributes`).then((r) => r.json()).catch(() => []);
   const nome = (id) => (Array.isArray(attrs) && attrs.find((a) => a.id === id)?.name) || id;
   const lista = [...ids];
+  // Medido em 19/09/2026 (MLB1714): com marca (Logitech, qualquer modelo) o ML recusa TODOS os
+  // motivos de "sem código"; com a marca Genérica, aceita. O motivo não substitui o código real.
+  const mandouMotivo = (payload?.attributes || []).some((a) => a.id === 'EMPTY_GTIN_REASON');
+  if (ids.has('GTIN') && mandouMotivo) {
+    return Object.assign(new Error('para este produto o Mercado Livre exige o código de barras real. Com marca '
+      + '(como Logitech), ele não aceita o motivo "não tem código": isso vale para produto genérico, artesanal ou kit. '
+      + 'O código fica na embalagem, embaixo das barras (quase sempre 13 dígitos). Desmarque "não tem código" e digite-o.'),
+    { status: 400, body: e.body, faltando: ['GTIN'] });
+  }
   const msg = `o Mercado Livre exige ${lista.length > 1 ? 'estes campos' : 'este campo'} nesta categoria: `
     + lista.map((id) => (id === 'GTIN' ? 'Código de barras (GTIN/EAN)' : nome(id))).join(', ')
     + '. Foi acrescentado à ficha técnica, em destaque: preencha e publique de novo.';
@@ -997,7 +1006,7 @@ const routes = {
     const userProduct = (me?.tags || []).includes('user_product_seller');
     const payload = buildItem(body, { userProduct });
     const item = await ml('/items', { method: 'POST', body: JSON.stringify(payload) })
-      .catch(async (e) => { throw await explicarRecusa(e, payload.category_id); });
+      .catch(async (e) => { throw await explicarRecusa(e, payload.category_id, payload); });
     const desc = String(body.description || '').trim();
     let description_ok = null;
     if (desc) {

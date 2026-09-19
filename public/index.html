@@ -436,7 +436,11 @@ function campoGtin(a){
       motivo.hidden = motivo.disabled = !cb.checked;
       campo.disabled = cb.checked; if(cb.checked) campo.value = '';
     };
-    wrap.append(chk, motivo);
+    const aviso2 = document.createElement('p'); aviso2.className = 'hint'; aviso2.style.margin = '6px 0 0';
+    aviso2.textContent = 'Só vale para produto genérico, artesanal ou kit. Produto de marca (ex.: Logitech) precisa do código real — o Mercado Livre recusa o motivo.';
+    aviso2.hidden = true;
+    cb.addEventListener('change', () => { aviso2.hidden = !cb.checked; });
+    wrap.append(chk, motivo, aviso2);
   }
   return wrap;
 }
