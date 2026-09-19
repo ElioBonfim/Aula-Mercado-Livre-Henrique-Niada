@@ -61,9 +61,14 @@ Entre na pasta: `cd Aula-Mercado-Livre-Henrique-Niada`
 ## Passo 4 — Instalar
 
 ```bash
+npm run atualizar
 npm install
 npm run setup
 ```
+
+O `atualizar` traz as correções mais novas do repositório da aula: um fork feito antes de
+uma correção **não** a recebe sozinho. Se ele disser que há alterações não salvas, pare e
+mostre ao aluno.
 
 O `setup` instala o `uv`, o Python 3.12, as dependências do scraper e o Chromium, cria o
 `.env` com uma chave de cifra e roda os testes. No fim ele imprime um **Resumo** com
@@ -138,6 +143,7 @@ computador onde o painel está instalado.
 | Túnel não abre | Ler `logs/tunel.log`. Rede corporativa pode bloquear a porta 7844: testar outra rede (ex.: celular). |
 | Scraper "reiniciando" sem parar | Ler `logs/scraper.log`; normalmente é o Chromium: `npm run setup`. |
 | "Node … é antigo demais" | Atualizar o Node (Passo 2) e repetir `npm run setup`. |
+| Erro que o professor diz já ter corrigido (ex.: "Parece que esta página no existe" ao fazer login no scraper) | `npm run atualizar`, depois `Ctrl+C` no `npm start` e `npm start` de novo. Se `atualizar` não existir (cópia muito antiga): `git pull https://github.com/ElioBonfim/Aula-Mercado-Livre-Henrique-Niada.git main`. |
 
 Para reiniciar depois de mudar código: `Ctrl+C` no `npm start` e rode `npm start` de novo —
 a URL pública continua a mesma. Para fechar tudo, túnel incluído: `npm run parar` (a próxima

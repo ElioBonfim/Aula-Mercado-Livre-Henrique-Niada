@@ -9,6 +9,7 @@ Responda em português do Brasil. Instalação do zero: siga `PRD-INSTALACAO.md`
   HTTPS juntos. Processo longo: rode em segundo plano. `Ctrl+C` encerra painel e scraper e
   deixa o túnel aberto (a URL não muda no próximo `npm start`). `npm run parar` fecha tudo.
   Ao reiniciar para aplicar mudança de código, NÃO use `npm run parar`: a URL mudaria.
+- `npm run atualizar` — traz as correções do repositório da aula (fork não recebe sozinho).
 - `npm test` — testes do painel. Scraper: `cd scraper && uv run python test_api.py`.
 - Logs: `logs/scraper.log`, `logs/tunel.log`.
 

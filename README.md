@@ -34,6 +34,8 @@ npm start
 
 O navegador abre sozinho em `http://localhost:3100`. **Não existe arquivo para editar**: senha, App ID e chave secreta são cadastrados na própria tela.
 
+**Sempre com as correções mais novas:** `npm run atualizar` busca a versão mais nova do repositório da aula (fork não recebe atualizações sozinho) e só avança a sua cópia — nunca apaga mudança sua.
+
 Mudou o código? `Ctrl+C` e `npm start` de novo: painel e scraper reiniciam, e **a URL pública continua a mesma** (o túnel fica aberto). Para fechar tudo, túnel incluído: `npm run parar`.
 
 ---
@@ -219,6 +221,7 @@ A API escuta **só em 127.0.0.1**, de propósito. Um perfil de navegador aceita 
 ├── iniciar.js               npm start: sobe painel + scraper + túnel (reaproveita o túnel aberto: mesma URL)
 ├── instalar.js              npm run setup: dependências, uv, Python, Chromium, .env, testes
 ├── parar.js                 npm run parar: fecha painel, scraper e túnel (a próxima URL será nova)
+├── atualizar.js             npm run atualizar: traz as correções do repositório da aula
 ├── server.js                painel (localhost) e porta pública (/callback, /webhook)
 ├── db.js                    SQLite: contas (tokens cifrados), senha, sessões, URLs, produtos
 ├── app-ml.js                valida App ID/chave e lê o cadastro do app no DevCenter
