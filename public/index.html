@@ -46,6 +46,8 @@
   #sugestoes{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-wrap:wrap;gap:8px}
   #sugestoes button{background:#eef3fd;color:var(--brand);font-size:13px;padding:6px 10px;font-weight:500}
   #catInfo{font-size:13px;color:var(--muted);margin-top:6px}
+  /* campo que o ML pediu depois de recusar */
+  #attrs .pedido{background:#fff4e0;border:1px solid #f0c46b;border-radius:var(--radius);padding:2px 12px 12px;margin:12px 0}
   /* tabela de medidas */
   #gradeCriar{margin-top:18px}
   #gradeCriar summary{cursor:pointer;color:#1a5fc4;font-weight:600}
@@ -220,7 +222,11 @@ function aviso(texto, tipo){ msg.className = tipo; msg.textContent = texto; msg.
 async function api(path, opts){
   const r = await fetch(path, opts);
   const j = await r.json();
-  if(!r.ok) throw new Error([j.error, j.detail && JSON.stringify(j.detail)].filter(Boolean).join('\n'));
+  if(!r.ok){
+    const e = new Error([j.error, j.detail && JSON.stringify(j.detail)].filter(Boolean).join('\n'));
+    e.dados = j;   // ex.: faltando = campos que o ML pediu
+    throw e;
+  }
   return j;
 }
 
@@ -365,14 +371,115 @@ $('btnPrever').onclick = async () => {
   }catch(e){ aviso('Falha ao sugerir categoria: ' + e.message, 'err'); lista.innerHTML=''; }
 };
 
-let attrsAtuais = [], categoriaCarregada = '';
+let attrsAtuais = [], attrsTodos = [], semGtin = null, categoriaCarregada = '';
+
+// Um campo da ficha técnica. obrigatorio: a tela cobra antes de enviar.
+function campoAtributo(a, { obrigatorio = false, condicional = false } = {}){
+  if(a.id === 'GTIN') return campoGtin(a);
+  const wrap = document.createElement('div');
+  const lab = document.createElement('label');
+  lab.htmlFor = 'attr_' + a.id; lab.textContent = a.name;
+  if(condicional && !obrigatorio){
+    const h = document.createElement('span'); h.className = 'hint'; h.textContent = ' — obrigatório em alguns casos';
+    lab.appendChild(h);
+  }
+  let campo;
+  if(a.values.length){
+    campo = document.createElement('select');
+    campo.add(new Option('— selecione —', ''));
+    a.values.forEach(v => campo.add(new Option(v, v)));   // textContent: vem do ML
+  }else{
+    campo = document.createElement('input');
+    const numerico = a.value_type === 'number' || (a.value_type === 'number_unit' && a.unidades?.length);
+    if(numerico){ campo.dataset.mascara = 'decimal'; campo.placeholder = 'ex.: 500'; }
+    else if(a.value_type === 'number_unit') campo.placeholder = 'ex.: 500 g';
+  }
+  campo.id = 'attr_' + a.id; campo.dataset.attr = a.id; campo.required = obrigatorio;
+  wrap.appendChild(lab);
+  // "500 g" num campo só é pedir erro: número de um lado, unidade (do ML) do outro.
+  if(a.value_type === 'number_unit' && a.unidades?.length && campo.tagName === 'INPUT'){
+    const linha = document.createElement('div'); linha.style.cssText = 'display:flex;gap:6px';
+    const un = document.createElement('select'); un.style.cssText = 'width:auto;flex:0 0 auto';
+    un.dataset.unidadeDe = a.id; un.setAttribute('aria-label', 'Unidade de ' + a.name);
+    a.unidades.forEach(u => un.add(new Option(u, u)));
+    if(a.unidade_padrao) un.value = a.unidade_padrao;
+    linha.append(campo, un); wrap.appendChild(linha);
+  }else wrap.appendChild(campo);
+  if(obrigatorio) attrsAtuais.push(a);
+  return wrap;
+}
+
+// GTIN (código de barras): o ML aceita o código OU um motivo para não ter (EMPTY_GTIN_REASON,
+// que vem oculto na ficha). Medido em MLB1714: sem nenhum dos dois -> "[GTIN] are required";
+// com o motivo -> aceito.
+function campoGtin(a){
+  const wrap = document.createElement('div'); wrap.dataset.gtin = '1';
+  const lab = document.createElement('label'); lab.htmlFor = 'attr_GTIN';
+  lab.textContent = 'Código de barras (GTIN/EAN)';
+  const campo = document.createElement('input');
+  campo.id = 'attr_GTIN'; campo.dataset.attr = 'GTIN'; campo.dataset.mascara = 'digitos'; campo.maxLength = 14;
+  campo.placeholder = 'os números embaixo das barras, na embalagem (8, 12, 13 ou 14 dígitos)';
+  wrap.append(lab, campo);
+  if(semGtin?.length){
+    const chk = document.createElement('div'); chk.className = 'check';
+    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.id = 'semGtin';
+    const l2 = document.createElement('label'); l2.htmlFor = 'semGtin'; l2.style.margin = '0';
+    l2.textContent = 'Este produto não tem código de barras';
+    chk.append(cb, l2);
+    const motivo = document.createElement('select');
+    motivo.id = 'attr_EMPTY_GTIN_REASON'; motivo.dataset.attr = 'EMPTY_GTIN_REASON';
+    motivo.setAttribute('aria-label', 'Motivo de não ter código de barras');
+    motivo.add(new Option('— por quê? —', ''));
+    semGtin.forEach(v => motivo.add(new Option(v, v)));
+    motivo.hidden = motivo.disabled = true; motivo.style.marginTop = '8px';
+    cb.onchange = () => {
+      motivo.hidden = motivo.disabled = !cb.checked;
+      campo.disabled = cb.checked; if(cb.checked) campo.value = '';
+    };
+    wrap.append(chk, motivo);
+  }
+  return wrap;
+}
+
+// Dígito verificador do EAN/GTIN (8, 12, 13 ou 14 dígitos).
+function gtinValido(d){
+  if(![8, 12, 13, 14].includes(d.length)) return false;
+  const n = [...d].map(Number), dv = n.pop();
+  const soma = n.reverse().reduce((s, x, i) => s + x * (i % 2 === 0 ? 3 : 1), 0);
+  return (10 - soma % 10) % 10 === dv;
+}
+
+// Rede de segurança: o ML recusou por falta de campo. Acrescenta à ficha exatamente os campos
+// que ele pediu, em destaque, para qualquer categoria. Devolve os que não dá para mostrar.
+function acrescentarCampos(ids){
+  const semTela = [];
+  let primeiro = null;
+  for(const id of ids){
+    const alvo = id === 'EMPTY_GTIN_REASON' ? 'GTIN' : id;
+    let el = document.querySelector(`#attrs [data-attr="${alvo}"]`);
+    if(!el){
+      const a = attrsTodos.find(x => x.id === alvo);
+      if(!a){ semTela.push(id); continue; }        // oculto na ficha do ML
+      $('attrs').appendChild(campoAtributo(a, { obrigatorio: alvo !== 'GTIN' }));
+      el = document.querySelector(`#attrs [data-attr="${alvo}"]`);
+    }else if(alvo !== 'GTIN' && !attrsAtuais.some(x => x.id === alvo)){
+      const a = attrsTodos.find(x => x.id === alvo); if(a) attrsAtuais.push(a);
+    }
+    el.closest('#attrs > div')?.classList.add('pedido');
+    primeiro = primeiro || el;
+  }
+  $('fsAttrs').hidden = false;
+  if(primeiro){ primeiro.scrollIntoView({ block: 'center' }); primeiro.focus({ preventScroll: true }); }
+  return semTela;
+}
+
 async function carregarCategoria(){
   const id = $('category_id').value.trim().toUpperCase();
   // O navegador repete o "change" quando o campo perde o foco. Recarregar a MESMA categoria
   // apagaria a ficha técnica que a pessoa já preencheu (Marca, Gênero…).
   if(id === categoriaCarregada) return;
   categoriaCarregada = id;
-  $('fsAttrs').hidden = true; $('attrs').innerHTML = ''; attrsAtuais = [];
+  $('fsAttrs').hidden = true; $('attrs').innerHTML = ''; attrsAtuais = []; attrsTodos = [];
   if(!/^[A-Z]{3}\d+$/.test(id)) { $('catInfo').textContent = ''; return; }
   $('catInfo').textContent = 'carregando ficha técnica…';
   try{
@@ -386,40 +493,14 @@ async function carregarCategoria(){
     [...cond.options].forEach(o => o.hidden = !permitidas.includes(o.value));
     if(cond.selectedOptions[0]?.hidden) cond.value = permitidas[0];
 
-    // a tela de publicar exige só os obrigatórios; a de editar mostra os 54
-    // Com tabela de medidas, o Tamanho vem da linha escolhida na tabela: um campo separado
-    // permitiria G7 na ficha e P na tabela, e o ML recusa ("Attribute [SIZE] is not valid", medido).
-    attrsAtuais = c.attributes.filter(a => a.obrigatorio && !(c.grade && a.id === 'SIZE'));
-    if(!attrsAtuais.length) return;
-    $('fsAttrs').hidden = false;
-    attrsAtuais.forEach(a => {
-      const wrap = document.createElement('div');
-      const lab = document.createElement('label');
-      lab.htmlFor = 'attr_' + a.id; lab.textContent = a.name;
-      let campo;
-      if(a.values.length){
-        campo = document.createElement('select');
-        campo.innerHTML = '<option value="">— selecione —</option>' +
-          a.values.map(v => `<option>${v.replace(/</g,'&lt;')}</option>`).join('');
-      }else{
-        campo = document.createElement('input');
-        const numerico = a.value_type === 'number' || (a.value_type === 'number_unit' && a.unidades?.length);
-        if(numerico){ campo.dataset.mascara = 'decimal'; campo.placeholder = 'ex.: 500'; }
-        else if(a.value_type === 'number_unit') campo.placeholder = 'ex.: 500 g';
-      }
-      campo.id = 'attr_' + a.id; campo.dataset.attr = a.id; campo.required = true;
-      wrap.appendChild(lab);
-      // "500 g" num campo só é pedir erro: número de um lado, unidade (do ML) do outro.
-      if(a.value_type === 'number_unit' && a.unidades?.length && campo.tagName === 'INPUT'){
-        const linha = document.createElement('div'); linha.style.cssText = 'display:flex;gap:6px';
-        const un = document.createElement('select'); un.style.cssText = 'width:auto;flex:0 0 auto';
-        un.dataset.unidadeDe = a.id; un.setAttribute('aria-label', 'Unidade de ' + a.name);
-        a.unidades.forEach(u => un.add(new Option(u, u)));
-        if(a.unidade_padrao) un.value = a.unidade_padrao;
-        linha.append(campo, un); wrap.appendChild(linha);
-      }else wrap.appendChild(campo);
-      $('attrs').appendChild(wrap);
-    });
+    attrsTodos = c.attributes; semGtin = c.sem_gtin;
+    // Obrigatórios + obrigatórios em alguns casos (ex.: código de barras). Com tabela de
+    // medidas, o Tamanho vem da linha da tabela: um campo separado permitiria G7 na ficha e
+    // P na tabela, e o ML recusa ("Attribute [SIZE] is not valid", medido).
+    const exibir = c.attributes.filter(a => (a.obrigatorio || a.condicional) && !(c.grade && a.id === 'SIZE'));
+    exibir.sort((x, y) => (y.obrigatorio - x.obrigatorio));
+    exibir.forEach(a => $('attrs').appendChild(campoAtributo(a, { obrigatorio: a.obrigatorio, condicional: a.condicional })));
+    $('fsAttrs').hidden = !exibir.length;
     iniciarGrade(!!c.grade);
   }catch(e){ $('catInfo').textContent = 'categoria não encontrada'; categoriaCarregada = ''; }
 }
@@ -574,6 +655,7 @@ $('form').onsubmit = async (ev) => {
   if(!(dados.quantity >= 1)){ btn.disabled = false; return aviso('Informe o estoque (ao menos 1).', 'err'); }
   dados.attributes = {};
   document.querySelectorAll('#attrs [data-attr]').forEach(el => {
+    if(el.disabled) return;   // ex.: código de barras quando marcado "não tem"
     let v = el.value.trim();
     if(v && el.dataset.mascara === 'decimal') v = String(Mascara.numero(el));   // ML quer ponto decimal
     const un = document.querySelector(`[data-unidade-de="${el.dataset.attr}"]`);
@@ -582,6 +664,14 @@ $('form').onsubmit = async (ev) => {
 
   const faltando = attrsAtuais.filter(a => !dados.attributes[a.id]).map(a => a.name);
   if(faltando.length){ btn.disabled = false; return aviso('Preencha a ficha técnica: ' + faltando.join(', '), 'err'); }
+  if($('attr_GTIN')){
+    const g = dados.attributes.GTIN || '', motivo = dados.attributes.EMPTY_GTIN_REASON || '';
+    if(!g && !motivo && $('semGtin')){ btn.disabled = false; $('attr_GTIN').focus();
+      return aviso('Informe o código de barras (GTIN/EAN) ou marque que o produto não tem e diga o motivo.', 'err'); }
+    if(g && !gtinValido(g)){ btn.disabled = false; $('attr_GTIN').focus();
+      return aviso('Código de barras inválido: confira os dígitos (EAN de 8, 12, 13 ou 14 números).', 'err'); }
+    if(!g) delete dados.attributes.GTIN;
+  }
   if(gradeAtiva){
     if(!$('gradeTabela').value || !$('gradeLinha').value){
       btn.disabled = false;
@@ -604,7 +694,13 @@ $('form').onsubmit = async (ev) => {
     ev.target.reset(); fotos = []; pintarFotos(); categoriaCarregada = '';
     $('sugestoes').innerHTML = ''; $('fsAttrs').hidden = true; $('catInfo').textContent = '';
     iniciarGrade(false);
-  }catch(e){ aviso('Não publicou:\n' + e.message, 'err'); }
+  }catch(e){
+    const pedidos = e.dados?.faltando || [];
+    if(pedidos.length){
+      const semTela = acrescentarCampos(pedidos);
+      aviso('Não publicou: ' + e.dados.error + (semTela.length ? `\n(Estes não aparecem na ficha do ML: ${semTela.join(', ')})` : ''), 'err');
+    }else aviso('Não publicou:\n' + e.message, 'err');
+  }
   finally{ btn.disabled = false; }
 };
 </script>

@@ -550,6 +550,29 @@ function consumirEstadoOAuth(state) {
   return d && Date.now() - d.criado <= VALIDADE_STATE_MS ? d : null;
 }
 
+// ---------- recusa por falta de campo ----------
+// Cada categoria do ML tem regras próprias (código de barras, tabela de medidas…). Em vez de
+// mostrar o erro em inglês, diz QUAIS campos faltam, com o nome em português, e devolve os
+// ids para a tela acrescentá-los à ficha técnica. Vale para qualquer categoria.
+async function explicarRecusa(e, categoria) {
+  const causas = (Array.isArray(e.body?.cause) ? e.body.cause : []).filter((c) => c?.type !== 'warning');
+  const ids = new Set();
+  for (const c of causas) {
+    if (!/missing|required/i.test(c.code || '')) continue;
+    for (const [, grupo] of String(c.message || '').matchAll(/\[([A-Z0-9_,\s]+)\]/g)) {
+      for (const id of grupo.split(',').map((x) => x.trim())) if (/^[A-Z][A-Z0-9_]+$/.test(id) && !/^[A-Z]{3}\d+$/.test(id)) ids.add(id);
+    }
+  }
+  if (!ids.size) return e;
+  const attrs = await fetch(`${API}/categories/${categoria}/attributes`).then((r) => r.json()).catch(() => []);
+  const nome = (id) => (Array.isArray(attrs) && attrs.find((a) => a.id === id)?.name) || id;
+  const lista = [...ids];
+  const msg = `o Mercado Livre exige ${lista.length > 1 ? 'estes campos' : 'este campo'} nesta categoria: `
+    + lista.map((id) => (id === 'GTIN' ? 'Código de barras (GTIN/EAN)' : nome(id))).join(', ')
+    + '. Foi acrescentado à ficha técnica, em destaque: preencha e publique de novo.';
+  return Object.assign(new Error(msg), { status: 400, body: e.body, faltando: lista });
+}
+
 // ---------- tabela de medidas (roupas e calçados) ----------
 // Categorias de moda exigem SIZE_GRID_ID (a tabela) e SIZE_GRID_ROW_ID (a linha do tamanho).
 // Medido em 19/09/2026 (camiseta masculina, MLB31447 / domínio MLB-T_SHIRTS):
@@ -889,6 +912,8 @@ const routes = {
       total_atributos: attrs.length,
       // Roupas e calçados: o ML exige tabela de medidas (SIZE_GRID_ID) e a linha do tamanho.
       grade: attrs.some((a) => a.id === 'SIZE_GRID_ID'),
+      // Motivos para não ter código de barras (EMPTY_GTIN_REASON vem oculto na ficha do ML).
+      sem_gtin: (attrs.find((a) => a.id === 'EMPTY_GTIN_REASON')?.values || []).map((v) => v.name),
       attributes: editaveis.map((a) => ({
         id: a.id,
         name: a.name,
@@ -971,7 +996,8 @@ const routes = {
     const me = await ml('/users/me').catch(() => null);
     const userProduct = (me?.tags || []).includes('user_product_seller');
     const payload = buildItem(body, { userProduct });
-    const item = await ml('/items', { method: 'POST', body: JSON.stringify(payload) });
+    const item = await ml('/items', { method: 'POST', body: JSON.stringify(payload) })
+      .catch(async (e) => { throw await explicarRecusa(e, payload.category_id); });
     const desc = String(body.description || '').trim();
     let description_ok = null;
     if (desc) {
@@ -1391,7 +1417,8 @@ async function tratarPainel(req, res, online = false) {
       if (req.method === 'POST' || req.method === 'PUT') body = JSON.parse((await lerCorpo(req)) || '{}');
       return send(200, exato ? await exato(url, body) : await comParam[0].fn(comParam[1].slice(1), body, url));
     } catch (e) {
-      return send(e.status || 500, { error: e.message, detail: e.body?.cause || e.errors || null });
+      return send(e.status || 500, { error: e.message, detail: e.faltando ? null : (e.body?.cause || e.errors || null),
+        ...(e.faltando ? { faltando: e.faltando } : {}) });
     }
   }
 

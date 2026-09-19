@@ -132,6 +132,8 @@ Com as credenciais salvas, o painel **lê o cadastro do seu aplicativo no própr
 
 **Roupas e calçados: tabela de medidas.** Nessas categorias o ML exige uma tabela de medidas e o tamanho do anúncio (`SIZE_GRID_ID` e `SIZE_GRID_ROW_ID`). Na tela Publicar, depois de escolher Marca e Gênero, aparece o bloco **Tabela de medidas**: escolha uma tabela sua e o tamanho, ou crie a tabela ali mesmo (uma vez por marca e gênero), com tamanho, equivalência (P, M, G… — o painel sugere) e as medidas que o ML pede. Medido: o ML não oferece tabela pronta para as marcas testadas, e a busca devolve as tabelas da própria conta. As medidas aparecem para o comprador; tabela sem uso pode ser apagada, mas a exclusão leva até 24 h.
 
+**Cada categoria tem regras próprias — e a tela se adapta.** A ficha técnica mostra os campos obrigatórios e também os "obrigatórios em alguns casos". O código de barras (GTIN/EAN) aceita só dígitos, confere o dígito verificador e tem a opção "Este produto não tem código de barras" com os motivos que o ML aceita (medido: sem código nem motivo, o ML recusa; com o motivo, aceita). Se mesmo assim o ML recusar por falta de campo, em qualquer categoria, o painel lê quais campos ele pediu, acrescenta-os à ficha em destaque e explica em português — em vez de mostrar o erro em inglês.
+
 **Contas "User Products".** Contas com a marca `user_product_seller` publicam com `family_name` no lugar de `title` (o ML recusa os dois juntos); o painel lê isso da conta e monta o anúncio certo.
 
 > Para testar sem sujar a conta real, crie um usuário de teste: `node criar-usuario-teste.js` (usa o App ID e a chave cadastrados no painel). A senha aparece **uma única vez**.
