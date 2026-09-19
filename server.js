@@ -24,6 +24,8 @@ const PORTA_PUBLICA = Number(process.env.PORTA_PUBLICA) || 3101;
 const SITE_PADRAO = process.env.ML_SITE || 'MLB';
 const API = 'https://api.mercadolibre.com';
 const MAX_FOTO_BYTES = 10 * 1024 * 1024;
+// Cada instalação tem o próprio banco: conta conectada em outro painel não aparece aqui.
+const SEM_CONTA = 'Nenhuma conta do Mercado Livre conectada neste painel. Conecte em Configurações → passo 3 (“Conectar conta”).';
 
 // Túnel e scraper são do iniciar.js. Rodando `node server.js` sozinho, valem estes padrões.
 let servicos = {
@@ -207,7 +209,7 @@ function mensagemDoML(json, fallback) {
 
 async function ml(pathname, opts = {}, contaId = null) {
   let conta = contaId ? D.contaObter(contaId) : D.contaAtiva();
-  if (!conta) throw Object.assign(new Error('Nenhuma conta conectada. Acesse /auth.'), { status: 401 });
+  if (!conta) throw Object.assign(new Error(SEM_CONTA), { status: 401 });
   if (Date.now() > conta.expires_at) conta = await renovar(conta);
 
   const isForm = opts.body instanceof FormData; // multipart: o fetch monta o boundary
@@ -342,7 +344,7 @@ function termosDoItem(item) {
 
 const contaOuErro = () => {
   const c = D.contaAtiva();
-  if (!c) throw Object.assign(new Error('Nenhuma conta conectada. Acesse /auth.'), { status: 401 });
+  if (!c) throw Object.assign(new Error(SEM_CONTA), { status: 401 });
   return c;
 };
 const siteAtivo = () => D.contaAtiva()?.site_id || SITE_PADRAO;
