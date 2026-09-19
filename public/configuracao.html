@@ -343,7 +343,11 @@ function pintar(c){
   const btn = $('btnConectar');
   btn.setAttribute('aria-disabled', String(!pode));
   btn.textContent = c.contas ? 'Conectar outra conta' : 'Conectar conta';
-  $('conectarDica').textContent = pode ? '' : !c.tem_credenciais ? 'Faça o passo 2 primeiro.'
+  // Logado no ML com uma conta que já autorizou o app, o ML pula a tela de autorização e
+  // reconecta a MESMA conta na hora (medido em 19/09/2026). Para outra conta, é preciso trocar lá.
+  $('conectarDica').textContent = pode ? (c.contas ? 'Para conectar OUTRA conta: antes, saia do Mercado Livre neste '
+    + 'navegador (ou use uma janela anônima) e entre com a outra conta. Logado na mesma, o ML reconecta ela direto, '
+    + 'sem mostrar a tela de autorização.' : '') : !c.tem_credenciais ? 'Faça o passo 2 primeiro.'
     : !url ? 'Aguardando o túnel.' : 'Atualize a URI de redirect no DevCenter primeiro.';
 
   // passos
