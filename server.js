@@ -189,7 +189,7 @@ const scraperFora = () => {
   const s = servicos.scraper();
   const detalhe = s?.estado === 'iniciando' || s?.estado === 'reiniciando'
     ? 'Ele está subindo agora; tente de novo em alguns segundos.'
-    : s?.erro ? `Motivo: ${s.erro}. Veja a tela Configuração do painel.`
+    : s?.erro ? `Motivo: ${s.erro}. Veja a tela Configurações do painel.`
       : 'Suba o painel com "npm start": ele sobe o scraper junto.';
   return Object.assign(new Error(`O scraper não respondeu em ${SCRAPER()}. ${detalhe}`), { status: 503 });
 };

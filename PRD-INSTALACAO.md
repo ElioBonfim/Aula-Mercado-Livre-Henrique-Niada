@@ -105,7 +105,7 @@ Mostre ao aluno as duas URLs do quadro e guie, uma etapa por vez:
 
 1. **Criar a senha do painel** — na primeira tela, com pelo menos 8 caracteres. Ele deve
    anotar: não tem "esqueci a senha" por e-mail.
-2. **Criar o aplicativo no Mercado Livre** — a tela **Configuração** mostra as duas URLs com
+2. **Criar o aplicativo no Mercado Livre** — a tela **Configurações** (no menu do topo) mostra as duas URLs com
    botão de copiar e um "Passo a passo" com o que marcar no DevCenter
    (https://developers.mercadolivre.com.br/devcenter):
    - URIs de redirect → a URL que termina em `/callback`;
@@ -113,21 +113,21 @@ Mostre ao aluno as duas URLs do quadro e guie, uma etapa por vez:
    - Fluxos OAuth → **Authorization Code**, **Client Credentials** e **Refresh Token**;
    - Permissões → leitura e escrita em *Publicação e sincronização*;
    - salvar.
-3. **Colar App ID e chave secreta no painel** (passo 2 da tela Configuração — não no chat).
+3. **Colar App ID e chave secreta no painel** (passo 2 da tela Configurações — não no chat).
    O painel confere com o Mercado Livre e diz se está certo.
 4. **Conectar a conta** — botão no passo 3. O aluno faz login no Mercado Livre no navegador
    dele e volta para o painel com a conta conectada.
 5. **Login do scraper** — aba **Navegador** → **Fazer login**. O aluno digita a senha do
    Mercado Livre na própria tela.
 
-**Pronto quando:** a tela Configuração mostra o passo 3 concluído (conta listada) e o
+**Pronto quando:** a tela Configurações mostra o passo 3 concluído (conta listada) e o
 scraper como **rodando**.
 
 ## Se algo der errado
 
 | Sintoma | O que fazer |
 |---|---|
-| Terminal mostra **"A URL PÚBLICA MUDOU"** | Normal após reiniciar. Aluno copia as URLs novas da tela Configuração para o app no DevCenter, salva e clica **Verificar de novo**. |
+| Terminal mostra **"A URL PÚBLICA MUDOU"** | Normal após reiniciar. Aluno copia as URLs novas da tela Configurações para o app no DevCenter, salva e clica **Verificar de novo**. |
 | Tela do ML: "não foi possível conectar o aplicativo" | Conferir se o app foi **salvo** no DevCenter; conta de colaborador não autoriza; pendência de cadastro no ML bloqueia. |
 | Aparece "Tunnel website ahead!" | O túnel caiu no plano B: digitar o IP que a própria página mostra e continuar. Ver `logs/tunel.log`. |
 | Túnel não abre | Ler `logs/tunel.log`. Rede corporativa pode bloquear a porta 7844: testar outra rede (ex.: celular). |

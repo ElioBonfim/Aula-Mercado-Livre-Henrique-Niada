@@ -2,7 +2,7 @@
 // node criar-usuario-teste.js
 // Cria um usuário de teste do Mercado Livre e MOSTRA a senha uma única vez —
 // a ML não tem como recuperá-la depois. Guarde na hora.
-// Usa o App ID e a chave secreta que você cadastrou no painel (tela Configuração).
+// Usa o App ID e a chave secreta que você cadastrou no painel (tela Configurações).
 require('./ambiente.js').carregar();
 const D = require('./db.js');
 const API = 'https://api.mercadolibre.com';
@@ -11,7 +11,7 @@ const API = 'https://api.mercadolibre.com';
   const clientId = D.configLer('ml_client_id') || process.env.ML_CLIENT_ID;
   const clientSecret = D.configLer('ml_client_secret') || process.env.ML_CLIENT_SECRET;
   if (!clientId || !clientSecret) {
-    return console.error('Cadastre o App ID e a chave secreta no painel (tela Configuração) antes.');
+    return console.error('Cadastre o App ID e a chave secreta no painel (tela Configurações) antes.');
   }
   const r = await fetch(`${API}/oauth/token`, {
     method: 'POST',

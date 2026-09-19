@@ -95,7 +95,7 @@ O `npm run setup` pode ser rodado quantas vezes quiser: cada passo confere antes
 ```
 
 - **Dois servidores no mesmo processo.** O painel escuta só em `127.0.0.1`. O túnel aponta para a **porta pública**, que responde apenas `/callback` (retorno do login) e `/webhook` (notificações); qualquer outro caminho dá `404`. Quem acha a URL do túnel não chega nas telas, na API nem no scraper — por construção, não por senha.
-- **O scraper sobe junto e volta sozinho.** Se o processo Python cair ou travar, o `npm start` reinicia com espera crescente (2 s, 5 s, 15 s…). O estado aparece em **Configuração**.
+- **O scraper sobe junto e volta sozinho.** Se o processo Python cair ou travar, o `npm start` reinicia com espera crescente (2 s, 5 s, 15 s…). O estado aparece em **Configurações**.
 - **Portas ocupadas não travam.** Se a 3100 já estiver em uso por outro programa, o painel usa a próxima livre e avisa. Se o próprio painel já estiver rodando, um segundo `npm start` só abre o navegador nele.
 - **Nada fica para trás.** `Ctrl+C` encerra túnel e scraper. Se o terminal morrer sem encerrar, o próximo `npm start` acha os processos órfãos (conferindo a linha de comando antes) e os encerra.
 
@@ -103,7 +103,7 @@ O `npm run setup` pode ser rodado quantas vezes quiser: cada passo confere antes
 
 ## 3. Primeiro acesso
 
-O painel guia pelos três passos numa tela só (**Configuração**), com o progresso no topo.
+O painel guia pelos três passos numa tela só (**Configurações**, no menu do topo), com o progresso no topo.
 
 **1. Criar a senha.** Na primeira visita o painel pede uma senha nova (mínimo de 8 caracteres). Ela fica no banco como hash `scrypt` com sal, e a tela de primeiro acesso some depois disso. Só quem está no próprio computador consegue criá-la (ver [Segurança](#13-segurança)).
 
@@ -125,7 +125,7 @@ Depois cole o **App ID** e a **Chave secreta** na tela. Antes de gravar, o paine
 
 Com as credenciais salvas, o painel **lê o cadastro do seu aplicativo no próprio ML** e compara com o túnel atual — sem você precisar confirmar nada. Se faltar um fluxo OAuth ou sobrar uma barra no fim da URL, ele diz qual.
 
-**3. Conectar a conta.** O botão abre a autorização do Mercado Livre no seu navegador; ao aceitar, você volta para a Configuração com a conta conectada. Cada passagem conecta **mais uma** conta; o seletor no topo das telas troca a conta ativa. Se a URI de redirect cadastrada não for a do túnel atual, o botão fica bloqueado com a explicação — em vez de mandar você para a tela de erro genérica do ML.
+**3. Conectar a conta.** O botão abre a autorização do Mercado Livre no seu navegador; ao aceitar, você volta para as Configurações com a conta conectada. Cada passagem conecta **mais uma** conta; o seletor no topo das telas troca a conta ativa. Se a URI de redirect cadastrada não for a do túnel atual, o botão fica bloqueado com a explicação — em vez de mandar você para a tela de erro genérica do ML.
 
 **Scraper.** Para medir posição na busca, o scraper precisa da sua conta logada no Chromium dele: aba **Navegador** → **Fazer login**. Você digita a senha e o código de verificação na própria tela do navegador; o programa só repassa cliques e teclas.
 
@@ -153,8 +153,8 @@ Por isso o localtunnel **não** está no `package.json`: só é baixado se o clo
 **A URL muda a cada reinício — e o painel acompanha.** Cada URL fica gravada no SQLite (`urls_publicas`). Quando o túnel abre com um endereço novo:
 
 - o terminal mostra um quadro **"A URL PÚBLICA MUDOU"** com as duas URLs novas e a anterior;
-- todas as telas mostram um aviso vermelho no topo, com link para a Configuração;
-- a Configuração diz exatamente o que o ML tem cadastrado hoje e o que precisa ficar.
+- todas as telas mostram um aviso vermelho no topo, com link para as Configurações;
+- a tela Configurações diz exatamente o que o ML tem cadastrado hoje e o que precisa ficar.
 
 Quando você atualiza no DevCenter e clica em **Verificar de novo**, o painel relê o cadastro no ML e o aviso some. Se o ML não deixar ler o cadastro (fluxo *Client Credentials* desmarcado), aparece o botão **Já atualizei no Mercado Livre** como plano B.
 
@@ -603,7 +603,7 @@ cd scraper && uv run python test_api.py
 
 ### O terminal diz "A URL PÚBLICA MUDOU"
 
-Normal depois de reiniciar: o túnel gratuito troca de endereço. Abra **Configuração**, copie as duas URLs novas para o seu app no DevCenter, salve lá e clique em **Verificar de novo**.
+Normal depois de reiniciar: o túnel gratuito troca de endereço. Abra **Configurações**, copie as duas URLs novas para o seu app no DevCenter, salve lá e clique em **Verificar de novo**.
 
 ### "Desculpe, não foi possível conectar o aplicativo à sua conta"
 
@@ -616,7 +616,7 @@ A tela de autorização do ML mostra isso para quatro causas diferentes. Elimine
 
 ### "Autorização expirada ou desconhecida" ao voltar do ML
 
-O retorno não corresponde a um "Conectar conta" dos últimos 15 minutos — ou o painel foi reiniciado no meio. Volte à Configuração e clique em **Conectar conta** de novo.
+O retorno não corresponde a um "Conectar conta" dos últimos 15 minutos — ou o painel foi reiniciado no meio. Volte às Configurações e clique em **Conectar conta** de novo.
 
 ### Aparece "Tunnel website ahead!"
 

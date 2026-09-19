@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Configuração — Mercado Livre</title>
+<title>Configurações — Mercado Livre</title>
 <style>
   :root{
     --bg:#f2f3f5; --card:#fff; --ink:#1a1a1a; --muted:#5f6368; --line:#e0e2e6;
@@ -79,8 +79,8 @@
 <body>
 <header>
   <div>
-    <h1>Configuração — Mercado Livre</h1>
-    <nav><a href="/">Publicar</a><a href="/anuncios.html">Meus anúncios</a><a href="/navegador.html">Navegador</a><a href="/configuracao.html" aria-current="page">Configuração</a></nav>
+    <h1>Configurações — Mercado Livre</h1>
+    <nav><a href="/">Publicar</a><a href="/anuncios.html">Meus anúncios</a><a href="/navegador.html">Navegador</a><a href="/configuracao.html" aria-current="page">Configurações</a></nav>
   </div>
   <form method="POST" action="/sair"><button type="submit">Sair</button></form>
 </header>
@@ -94,11 +94,17 @@
 
   <div id="aviso" role="status" aria-live="polite"></div>
 
-  <!-- 1. URLs para o DevCenter -->
+  <!-- 1. Túnel e URLs para o DevCenter -->
   <section aria-labelledby="t1">
-    <h2 id="t1"><span class="num" id="n1">1</span>Cadastre estas URLs no seu aplicativo do Mercado Livre</h2>
+    <h2 id="t1"><span class="num" id="n1">1</span>Túnel e URLs para o aplicativo do Mercado Livre</h2>
     <p class="sub">O Mercado Livre só devolve o login e as notificações para um endereço HTTPS público. O painel abre esse endereço sozinho (um túnel) e ele aponta para este computador.</p>
 
+    <dl class="status">
+      <dt>Túnel</dt><dd id="tunelEstado">—</dd>
+      <dt>Endereço público</dt><dd id="tunelUrl" class="mono">—</dd>
+    </dl>
+
+    <p class="sub" style="margin:18px 0 0">Cadastre estas duas URLs no seu aplicativo do DevCenter:</p>
     <label for="uCallback">URI de redirect</label>
     <div class="linha">
       <input id="uCallback" readonly value="aguardando o túnel…">
@@ -133,8 +139,7 @@
     </details>
 
     <dl class="status" style="margin-top:16px">
-      <dt>Túnel</dt><dd id="tunelEstado">—</dd>
-      <dt>Anteriores</dt><dd id="historico">—</dd>
+      <dt>URLs anteriores</dt><dd id="historico">—</dd>
     </dl>
   </section>
 
@@ -247,6 +252,7 @@ function pintar(c){
   ultimo = c;
   const t = c.tunel || {};
   const url = t.estado === 'online' ? t.url : null;
+  $('tunelUrl').textContent = url || 'aguardando o túnel…';
   $('uCallback').value = url ? url + '/callback' : 'aguardando o túnel…';
   $('uWebhook').value = url ? url + '/webhook' : 'aguardando o túnel…';
   document.querySelectorAll('[data-copiar]').forEach((b) => b.disabled = !url);
