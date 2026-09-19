@@ -152,7 +152,7 @@
         <select id="gradeTabela" disabled><option value="">—</option></select>
       </div>
       <div>
-        <label for="gradeLinha">Tamanho deste anúncio</label>
+        <label for="gradeLinha">Tamanho deste anúncio <span class="hint">— vale como o Tamanho do anúncio</span></label>
         <select id="gradeLinha" disabled><option value="">—</option></select>
       </div>
     </div>
@@ -387,7 +387,9 @@ async function carregarCategoria(){
     if(cond.selectedOptions[0]?.hidden) cond.value = permitidas[0];
 
     // a tela de publicar exige só os obrigatórios; a de editar mostra os 54
-    attrsAtuais = c.attributes.filter(a => a.obrigatorio);
+    // Com tabela de medidas, o Tamanho vem da linha escolhida na tabela: um campo separado
+    // permitiria G7 na ficha e P na tabela, e o ML recusa ("Attribute [SIZE] is not valid", medido).
+    attrsAtuais = c.attributes.filter(a => a.obrigatorio && !(c.grade && a.id === 'SIZE'));
     if(!attrsAtuais.length) return;
     $('fsAttrs').hidden = false;
     attrsAtuais.forEach(a => {
@@ -426,11 +428,12 @@ $('category_id').addEventListener('change', carregarCategoria);
 // ---------- tabela de medidas (roupas e calçados) ----------
 // O ML exige a tabela (SIZE_GRID_ID) e a linha do tamanho (SIZE_GRID_ROW_ID). A busca
 // depende de Marca e Gênero; quem não tem tabela cria uma aqui, com as medidas reais.
-let gradeAtiva = false, gradeFicha = null;
+let gradeAtiva = false, gradeFicha = null, gradeChave = '';
 const TAMANHOS_INICIAIS = ['P', 'M', 'G', 'GG'];
 
 function iniciarGrade(ativa){
   gradeAtiva = ativa;
+  gradeChave = '';
   $('fsGrade').hidden = !ativa;
   $('gradeCriar').hidden = true;
   limparSelect($('gradeTabela')); limparSelect($('gradeLinha'));
@@ -447,6 +450,11 @@ function limparSelect(sel, texto = '—'){
 // sem isto a tela dizia "nenhuma tabela ainda" e o segundo clique esbarrava no nome já usado.
 async function carregarTabelas(selecionar, nova){
   const genero = $('attr_GENDER')?.value || '', marca = $('attr_BRAND')?.value || '';
+  // O navegador repete o "change" quando o campo perde o foco. Com Marca e Gênero iguais,
+  // recarregar desmarcaria a tabela e o tamanho já escolhidos.
+  const chave = `${$('category_id').value}|${genero}|${marca}`;
+  if(!selecionar && !nova && chave === gradeChave) return;
+  gradeChave = chave;
   const dica = $('gradeDica');
   limparSelect($('gradeTabela')); limparSelect($('gradeLinha'));
   if(!genero || !marca){ dica.textContent = 'Escolha a Marca e o Gênero na ficha técnica acima.'; $('gradeCriar').hidden = true; return; }
@@ -470,7 +478,7 @@ async function carregarTabelas(selecionar, nova){
       dica.textContent = `Você ainda não tem tabela de medidas para ${genero} · ${marca}. Crie uma abaixo (uma vez só).`;
       $('gradeCriar').open = true;
     }
-  }catch(e){ dica.textContent = 'Não consegui buscar as tabelas: ' + e.message; }
+  }catch(e){ dica.textContent = 'Não consegui buscar as tabelas: ' + e.message; gradeChave = ''; }
 }
 
 function pintarLinhas(){
@@ -581,6 +589,7 @@ $('form').onsubmit = async (ev) => {
     }
     dados.attributes.SIZE_GRID_ID = $('gradeTabela').value;
     dados.attributes.SIZE_GRID_ROW_ID = $('gradeLinha').value;
+    dados.attributes.SIZE = $('gradeLinha').selectedOptions[0].text;   // tem de ser igual ao da linha
   }
   if(!fotos.length){ btn.disabled = false; return aviso('Adicione ao menos uma foto.', 'err'); }
 
