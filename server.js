@@ -546,6 +546,74 @@ function consumirEstadoOAuth(state) {
   return d && Date.now() - d.criado <= VALIDADE_STATE_MS ? d : null;
 }
 
+// ---------- tabela de medidas (roupas e calçados) ----------
+// Categorias de moda exigem SIZE_GRID_ID (a tabela) e SIZE_GRID_ROW_ID (a linha do tamanho).
+// Medido em 19/09/2026 (camiseta masculina, MLB31447 / domínio MLB-T_SHIRTS):
+//   - a busca de tabelas EXIGE Marca e Gênero, e devolve as tabelas da própria conta;
+//     não havia tabela pronta para nenhuma marca testada, então o vendedor cria a sua;
+//   - o que cada linha exige vem de POST /domains/{dom}/technical_specs?section=grids
+//     (com Marca e Gênero): SIZE (main_attribute_candidate) + CHEST_CIRCUMFERENCE_FROM
+//     (BODY_MEASURE, required). Tabela criada vale na hora e só se apaga se não estiver em uso.
+async function contextoGrade(q) {
+  const categoria = String(q.categoria || '');
+  if (!ITEM_ID.test(categoria)) throw erro400('Categoria inválida.');
+  const [cat, attrs] = await Promise.all([
+    fetch(`${API}/categories/${categoria}`).then((r) => r.json()),
+    fetch(`${API}/categories/${categoria}/attributes`).then((r) => r.json()),
+  ]);
+  const dominio = cat.settings?.catalog_domain;
+  if (!dominio || !attrs.some((a) => a.id === 'SIZE_GRID_ID')) throw erro400('Esta categoria não usa tabela de medidas.');
+  const acha = (id, nome) => (attrs.find((a) => a.id === id)?.values || []).find((v) => v.name === nome);
+  const genero = acha('GENDER', q.genero);
+  if (!genero) throw erro400('Escolha o Gênero na ficha técnica primeiro.');
+  const marcaNome = String(q.marca || '').trim();
+  if (!marcaNome) throw erro400('Escolha a Marca na ficha técnica primeiro.');
+  const marca = acha('BRAND', marcaNome) || { name: marcaNome };
+  const site = dominio.slice(0, 3);
+  return { dominio, domainId: dominio.slice(4), site, genero, marca };
+}
+
+// O que a tabela exige em cada linha: o tamanho (atributo principal) e as medidas obrigatórias.
+async function fichaGrade(ctx) {
+  const attr = (id, v) => ({ id, value_id: v.id || null, value_name: v.name, values: [{ id: v.id || null, name: v.name }] });
+  const f = await ml(`/domains/${ctx.dominio}/technical_specs?section=grids`, {
+    method: 'POST', body: JSON.stringify({ attributes: [attr('BRAND', ctx.marca), attr('GENDER', ctx.genero)] }),
+  });
+  const todos = [];
+  const visitar = (o) => {
+    if (Array.isArray(o)) return o.forEach(visitar);
+    if (!o || typeof o !== 'object') return;
+    if (o.component && Array.isArray(o.attributes)) todos.push(...o.attributes);
+    Object.values(o).forEach(visitar);
+  };
+  visitar(f.input);
+  const tem = (a, t) => (a.tags || []).includes(t);
+  const principal = todos.find((a) => a.id === 'SIZE' && tem(a, 'main_attribute_candidate'))
+    || todos.find((a) => tem(a, 'main_attribute_candidate'));
+  if (!principal) throw Object.assign(new Error('O ML não informou o campo de tamanho desta tabela.'), { status: 502 });
+  const base = (a) => tem(a, 'required') && a.id !== principal.id && !tem(a, 'grid_filter');
+  // Medidas corporais (padrão da tabela) obrigatórias; as medidas da peça ficam de fora.
+  const medidas = todos.filter((a) => base(a) && a.value_type === 'number_unit' && !tem(a, 'CLOTHING_MEASURE'))
+    .map((a) => ({ id: a.id, nome: a.name, unidade: a.default_unit_id
+      || (a.units || a.allowed_units || []).map((u) => u.id || u.name).find(Boolean) || 'cm' }));
+  // Listas obrigatórias por linha. A ficha marca FILTRABLE_SIZE como oculto, mas o POST
+  // recusa a linha sem ele (medido): é a equivalência padrão (P, M, G…) usada nos filtros.
+  const listas = todos.filter((a) => base(a) && a.value_type === 'list' && (a.values || []).length)
+    .map((a) => ({ id: a.id, nome: a.id === 'FILTRABLE_SIZE' ? 'Equivalência' : a.name,
+      valores: a.values.map((v) => ({ id: String(v.id), nome: v.name })) }));
+  return { principal: { id: principal.id, nome: principal.name }, medidas, listas };
+}
+
+function tabelaSimples(ch, site) {
+  const valor = (row, id) => (row.attributes || []).find((a) => a.id === id)?.values?.[0]?.name || '';
+  const principal = ch.main_attribute_id || 'SIZE';
+  return {
+    id: String(ch.id), tipo: ch.type || null,
+    nome: ch.names?.[site] || Object.values(ch.names || {})[0] || `Tabela ${ch.id}`,
+    linhas: (ch.rows || []).map((r) => ({ id: String(r.id), tamanho: valor(r, 'SIZE') || valor(r, principal) })),
+  };
+}
+
 // ---------- rotas de caminho fixo ----------
 const ATRIBUTOS_LISTA = ['id', 'title', 'price', 'available_quantity', 'sold_quantity', 'status',
   'sub_status', 'secure_thumbnail', 'thumbnail', 'permalink', 'listing_type_id', 'health',
@@ -815,6 +883,8 @@ const routes = {
       path: (cat.path_from_root || []).map((p) => p.name).join(' › '),
       settings: cat.settings,
       total_atributos: attrs.length,
+      // Roupas e calçados: o ML exige tabela de medidas (SIZE_GRID_ID) e a linha do tamanho.
+      grade: attrs.some((a) => a.id === 'SIZE_GRID_ID'),
       attributes: editaveis.map((a) => ({
         id: a.id,
         name: a.name,
@@ -827,6 +897,61 @@ const routes = {
         unidade_padrao: a.default_unit || (a.allowed_units || [])[0]?.id || null,
       })),
     };
+  },
+
+  // Tabelas de medidas da conta para esta categoria + Marca + Gênero, e o que é preciso para criar uma.
+  'GET /api/tabelas': async (url) => {
+    const conta = contaOuErro();
+    const ctx = await contextoGrade(Object.fromEntries(url.searchParams));
+    const marca = ctx.marca.id ? { id: ctx.marca.id } : { name: ctx.marca.name };
+    const [busca, ficha] = await Promise.all([
+      ml('/catalog/charts/search', { method: 'POST', body: JSON.stringify({
+        domain_id: ctx.domainId, site_id: ctx.site, seller_id: conta.ml_user_id,
+        attributes: [{ id: 'GENDER', values: [{ id: ctx.genero.id }] }, { id: 'BRAND', values: [marca] }],
+      }) }),
+      fichaGrade(ctx),
+    ]);
+    return { tabelas: (busca.charts || []).map((ch) => tabelaSimples(ch, ctx.site)), ficha };
+  },
+
+  // Cria a tabela de medidas do vendedor. As medidas aparecem para o comprador no anúncio.
+  'POST /api/tabelas': async (_u, body) => {
+    contaOuErro();
+    const ctx = await contextoGrade(body);
+    const ficha = await fichaGrade(ctx);
+    // O ML só aceita letras, números e espaços no nome (até 60).
+    const nome = String(body.nome || '').replace(/[^\p{L}\p{N} ]/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, 60);
+    if (nome.length < 3) throw erro400('Dê um nome à tabela (letras, números e espaços).');
+    const linhas = Array.isArray(body.linhas) ? body.linhas : [];
+    if (!linhas.length || linhas.length > 75) throw erro400('A tabela precisa de 1 a 75 tamanhos.');
+    const vistos = new Set();
+    const rows = linhas.map((l, i) => {
+      const tam = String(l?.tamanho || '').trim();
+      if (!tam) throw erro400(`Informe o tamanho da linha ${i + 1}.`);
+      if (vistos.has(tam.toLowerCase())) throw erro400(`O tamanho "${tam}" aparece duas vezes.`);
+      vistos.add(tam.toLowerCase());
+      const medidas = ficha.medidas.map((m) => {
+        const n = Number(String(l?.medidas?.[m.id] ?? '').replace(',', '.'));
+        if (!Number.isFinite(n) || n <= 0) throw erro400(`Informe "${m.nome}" do tamanho ${tam}.`);
+        return { id: m.id, values: [{ name: `${n} ${m.unidade}` }] };
+      });
+      const listas = ficha.listas.map((li) => {
+        const v = li.valores.find((x) => x.id === String(l?.listas?.[li.id] ?? ''));
+        if (!v) throw erro400(`Escolha "${li.nome}" do tamanho ${tam}.`);
+        return { id: li.id, values: [{ id: v.id, name: v.nome }] };
+      });
+      return { attributes: [{ id: ficha.principal.id, values: [{ name: tam }] }, ...medidas, ...listas] };
+    });
+    const ch = await ml('/catalog/charts', { method: 'POST', body: JSON.stringify({
+      names: { [ctx.site]: nome }, domain_id: ctx.domainId, site_id: ctx.site,
+      main_attribute: { attributes: [{ site_id: ctx.site, id: ficha.principal.id }] },
+      attributes: [
+        { id: 'GENDER', values: [{ id: ctx.genero.id, name: ctx.genero.name }] },
+        { id: 'BRAND', values: [ctx.marca.id ? { id: ctx.marca.id, name: ctx.marca.name } : { name: ctx.marca.name }] },
+      ],
+      rows,
+    }) });
+    return tabelaSimples(ch, ctx.site);
   },
 
   'POST /api/items': async (_u, body) => {

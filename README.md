@@ -130,6 +130,10 @@ Com as credenciais salvas, o painel **lê o cadastro do seu aplicativo no própr
 
 **Scraper.** Para medir posição na busca, o scraper precisa da sua conta logada no Chromium dele: aba **Navegador** → **Fazer login**. Você digita a senha e o código de verificação na própria tela do navegador; o programa só repassa cliques e teclas.
 
+**Roupas e calçados: tabela de medidas.** Nessas categorias o ML exige uma tabela de medidas e o tamanho do anúncio (`SIZE_GRID_ID` e `SIZE_GRID_ROW_ID`). Na tela Publicar, depois de escolher Marca e Gênero, aparece o bloco **Tabela de medidas**: escolha uma tabela sua e o tamanho, ou crie a tabela ali mesmo (uma vez por marca e gênero), com tamanho, equivalência (P, M, G… — o painel sugere) e as medidas que o ML pede. Medido: o ML não oferece tabela pronta para as marcas testadas, e a busca devolve as tabelas da própria conta. As medidas aparecem para o comprador; tabela sem uso pode ser apagada, mas a exclusão leva até 24 h.
+
+**Contas "User Products".** Contas com a marca `user_product_seller` publicam com `family_name` no lugar de `title` (o ML recusa os dois juntos); o painel lê isso da conta e monta o anúncio certo.
+
 > Para testar sem sujar a conta real, crie um usuário de teste: `node criar-usuario-teste.js` (usa o App ID e a chave cadastrados no painel). A senha aparece **uma única vez**.
 
 ---

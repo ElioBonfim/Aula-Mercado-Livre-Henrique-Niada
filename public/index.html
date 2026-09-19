@@ -46,6 +46,15 @@
   #sugestoes{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-wrap:wrap;gap:8px}
   #sugestoes button{background:#eef3fd;color:var(--brand);font-size:13px;padding:6px 10px;font-weight:500}
   #catInfo{font-size:13px;color:var(--muted);margin-top:6px}
+  /* tabela de medidas */
+  #gradeCriar{margin-top:18px}
+  #gradeCriar summary{cursor:pointer;color:#1a5fc4;font-weight:600}
+  .gradeRolagem{overflow-x:auto;margin-top:12px}
+  .gradeTab{width:100%;border-collapse:collapse;font-size:14px}
+  .gradeTab th{text-align:left;font-size:12px;font-weight:600;color:var(--muted);padding:0 6px 6px 0}
+  .gradeTab td{padding:0 6px 8px 0;vertical-align:top}
+  .gradeTab input,.gradeTab select{padding:8px 10px;min-width:84px}
+  .gradeTab .x{background:transparent;color:var(--muted);padding:8px;font-size:18px;line-height:1}
   #msg{margin-top:16px;padding:14px;border-radius:var(--radius);display:none;white-space:pre-wrap;font-size:14px}
   #msg.ok{display:block;background:#e6f4ea;color:#14532d;border:1px solid #a6dcb6}
   #msg.err{display:block;background:#fce8e6;color:#7f1d1d;border:1px solid #f0b3ad}
@@ -131,6 +140,41 @@
   <fieldset id="fsAttrs" hidden>
     <legend>Ficha técnica <span class="hint">— obrigatória nesta categoria</span></legend>
     <div id="attrs"></div>
+  </fieldset>
+
+  <!-- Roupas e calçados: o ML exige a tabela de medidas e o tamanho do anúncio -->
+  <fieldset id="fsGrade" hidden>
+    <legend>Tabela de medidas <span class="hint">— obrigatória em roupas e calçados</span></legend>
+    <p class="hint" id="gradeDica" aria-live="polite">Escolha a Marca e o Gênero na ficha técnica acima.</p>
+    <div class="row">
+      <div>
+        <label for="gradeTabela">Tabela</label>
+        <select id="gradeTabela" disabled><option value="">—</option></select>
+      </div>
+      <div>
+        <label for="gradeLinha">Tamanho deste anúncio</label>
+        <select id="gradeLinha" disabled><option value="">—</option></select>
+      </div>
+    </div>
+    <details id="gradeCriar" hidden>
+      <summary>Criar uma tabela de medidas</summary>
+      <p class="hint">A tabela fica salva na sua conta e serve para os próximos anúncios desta marca e gênero.
+        As medidas aparecem para o comprador: use as <strong>medidas reais</strong>.</p>
+      <label for="gradeNome">Nome da tabela</label>
+      <input id="gradeNome" maxlength="60" autocomplete="off" aria-describedby="gradeNomeDica">
+      <p class="hint" id="gradeNomeDica" style="margin:4px 0 0">Só letras, números e espaços.</p>
+      <div class="gradeRolagem">
+        <table class="gradeTab">
+          <thead><tr id="gradeCab"></tr></thead>
+          <tbody id="gradeLinhas"></tbody>
+        </table>
+      </div>
+      <div class="acoes" style="margin-top:12px">
+        <button type="button" class="ghost" id="gradeMais">+ tamanho</button>
+        <button type="button" id="gradeCriarBtn">Criar tabela</button>
+      </div>
+      <p class="hint" id="gradeCriarMsg" role="status" aria-live="polite"></p>
+    </details>
   </fieldset>
 
   <fieldset>
@@ -320,9 +364,13 @@ $('btnPrever').onclick = async () => {
   }catch(e){ aviso('Falha ao sugerir categoria: ' + e.message, 'err'); lista.innerHTML=''; }
 };
 
-let attrsAtuais = [];
+let attrsAtuais = [], categoriaCarregada = '';
 async function carregarCategoria(){
   const id = $('category_id').value.trim().toUpperCase();
+  // O navegador repete o "change" quando o campo perde o foco. Recarregar a MESMA categoria
+  // apagaria a ficha técnica que a pessoa já preencheu (Marca, Gênero…).
+  if(id === categoriaCarregada) return;
+  categoriaCarregada = id;
   $('fsAttrs').hidden = true; $('attrs').innerHTML = ''; attrsAtuais = [];
   if(!/^[A-Z]{3}\d+$/.test(id)) { $('catInfo').textContent = ''; return; }
   $('catInfo').textContent = 'carregando ficha técnica…';
@@ -357,9 +405,134 @@ async function carregarCategoria(){
       campo.id = 'attr_' + a.id; campo.dataset.attr = a.id; campo.required = true;
       wrap.append(lab, campo); $('attrs').appendChild(wrap);
     });
-  }catch(e){ $('catInfo').textContent = 'categoria não encontrada'; }
+    iniciarGrade(!!c.grade);
+  }catch(e){ $('catInfo').textContent = 'categoria não encontrada'; categoriaCarregada = ''; }
 }
 $('category_id').addEventListener('change', carregarCategoria);
+
+// ---------- tabela de medidas (roupas e calçados) ----------
+// O ML exige a tabela (SIZE_GRID_ID) e a linha do tamanho (SIZE_GRID_ROW_ID). A busca
+// depende de Marca e Gênero; quem não tem tabela cria uma aqui, com as medidas reais.
+let gradeAtiva = false, gradeFicha = null;
+const TAMANHOS_INICIAIS = ['P', 'M', 'G', 'GG'];
+
+function iniciarGrade(ativa){
+  gradeAtiva = ativa;
+  $('fsGrade').hidden = !ativa;
+  $('gradeCriar').hidden = true;
+  limparSelect($('gradeTabela')); limparSelect($('gradeLinha'));
+  if(!ativa) return;
+  for(const id of ['attr_GENDER', 'attr_BRAND']) $(id)?.addEventListener('change', carregarTabelas);
+  carregarTabelas();
+}
+
+function limparSelect(sel, texto = '—'){
+  sel.replaceChildren(new Option(texto, '')); sel.disabled = true;
+}
+
+async function carregarTabelas(selecionar){
+  const genero = $('attr_GENDER')?.value || '', marca = $('attr_BRAND')?.value || '';
+  const dica = $('gradeDica');
+  limparSelect($('gradeTabela')); limparSelect($('gradeLinha'));
+  if(!genero || !marca){ dica.textContent = 'Escolha a Marca e o Gênero na ficha técnica acima.'; $('gradeCriar').hidden = true; return; }
+  dica.textContent = 'Buscando as suas tabelas de medidas…';
+  try{
+    const q = new URLSearchParams({ categoria: $('category_id').value.trim().toUpperCase(), genero, marca });
+    const r = await api('/api/tabelas?' + q);
+    gradeFicha = r.ficha;
+    const sel = $('gradeTabela');
+    sel.replaceChildren(new Option(r.tabelas.length ? '— selecione —' : 'nenhuma tabela ainda', ''));
+    for(const t of r.tabelas) sel.add(new Option(`${t.nome} (${t.linhas.length} tamanhos)`, t.id));
+    sel.disabled = !r.tabelas.length;
+    sel._tabelas = r.tabelas;
+    montarEditor(genero, marca);
+    $('gradeCriar').hidden = false;
+    if(r.tabelas.length){
+      dica.textContent = 'Escolha a tabela e o tamanho deste anúncio.';
+      if(selecionar){ sel.value = selecionar; pintarLinhas(); }
+    }else{
+      dica.textContent = `Você ainda não tem tabela de medidas para ${genero} · ${marca}. Crie uma abaixo (uma vez só).`;
+      $('gradeCriar').open = true;
+    }
+  }catch(e){ dica.textContent = 'Não consegui buscar as tabelas: ' + e.message; }
+}
+
+function pintarLinhas(){
+  const tab = ($('gradeTabela')._tabelas || []).find(t => t.id === $('gradeTabela').value);
+  const sel = $('gradeLinha');
+  if(!tab){ limparSelect(sel); return; }
+  sel.replaceChildren(new Option('— selecione —', ''));
+  for(const l of tab.linhas) sel.add(new Option(l.tamanho || l.id, l.id));
+  sel.disabled = false;
+}
+$('gradeTabela').addEventListener('change', pintarLinhas);
+
+// Editor de criação: uma linha por tamanho, com as medidas e listas que o ML exige.
+function montarEditor(genero, marca){
+  const f = gradeFicha; if(!f) return;
+  const tipo = $('attr_GARMENT_TYPE')?.value || '';
+  $('gradeNome').value = `${tipo || 'Tabela'} ${genero} ${marca}`.replace(/[^\p{L}\p{N} ]/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, 60);
+  const cab = $('gradeCab'); cab.replaceChildren();
+  const th = (t) => { const e = document.createElement('th'); e.scope = 'col'; e.textContent = t; cab.appendChild(e); };
+  th(f.principal.nome);
+  f.listas.forEach(li => th(li.nome));
+  f.medidas.forEach(m => th(`${m.nome} (${m.unidade})`));
+  th('');
+  $('gradeLinhas').replaceChildren();
+  TAMANHOS_INICIAIS.forEach(novaLinhaGrade);
+}
+
+function novaLinhaGrade(tamanho = ''){
+  const f = gradeFicha; const tr = document.createElement('tr');
+  const n = $('gradeLinhas').children.length + 1;
+  const td = (el) => { const c = document.createElement('td'); c.appendChild(el); tr.appendChild(c); return el; };
+  const tam = td(document.createElement('input'));
+  tam.value = tamanho; tam.dataset.tamanho = '1'; tam.setAttribute('aria-label', `${f.principal.nome}, linha ${n}`);
+  const listas = f.listas.map(li => {
+    const s = td(document.createElement('select'));
+    s.dataset.lista = li.id; s.setAttribute('aria-label', `${li.nome}, linha ${n}`);
+    s.add(new Option('—', ''));
+    li.valores.forEach(v => s.add(new Option(v.nome, v.id)));
+    return s;
+  });
+  // Equivalência sugerida quando o tamanho digitado já é um tamanho padrão (P -> P).
+  const sugerir = () => listas.forEach(s => {
+    const alvo = [...s.options].find(o => o.text.toLowerCase() === tam.value.trim().toLowerCase());
+    if(alvo && !s.dataset.mexido) s.value = alvo.value;
+  });
+  listas.forEach(s => s.addEventListener('change', () => { s.dataset.mexido = '1'; }));
+  tam.addEventListener('input', sugerir); sugerir();
+  f.medidas.forEach(m => {
+    const i = td(document.createElement('input'));
+    i.inputMode = 'decimal'; i.dataset.medida = m.id; i.placeholder = 'ex.: 96';
+    i.setAttribute('aria-label', `${m.nome} em ${m.unidade}, linha ${n}`);
+  });
+  const x = td(document.createElement('button'));
+  x.type = 'button'; x.className = 'x'; x.textContent = '×'; x.setAttribute('aria-label', `Remover linha ${n}`);
+  x.onclick = () => tr.remove();
+  $('gradeLinhas').appendChild(tr);
+}
+$('gradeMais').onclick = () => novaLinhaGrade();
+
+$('gradeCriarBtn').onclick = async () => {
+  const b = $('gradeCriarBtn'), msgC = $('gradeCriarMsg');
+  const linhas = [...$('gradeLinhas').children].map(tr => ({
+    tamanho: tr.querySelector('[data-tamanho]').value,
+    medidas: Object.fromEntries([...tr.querySelectorAll('[data-medida]')].map(i => [i.dataset.medida, i.value])),
+    listas: Object.fromEntries([...tr.querySelectorAll('[data-lista]')].map(s => [s.dataset.lista, s.value])),
+  }));
+  b.disabled = true; msgC.textContent = 'Criando no Mercado Livre…';
+  try{
+    const t = await api('/api/tabelas', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({
+      categoria: $('category_id').value.trim().toUpperCase(), genero: $('attr_GENDER').value, marca: $('attr_BRAND').value,
+      nome: $('gradeNome').value, linhas,
+    }) });
+    msgC.textContent = `Tabela "${t.nome}" criada. Agora escolha o tamanho deste anúncio.`;
+    $('gradeCriar').open = false;
+    await carregarTabelas(t.id);
+  }catch(e){ msgC.textContent = 'Não criou: ' + e.message; }
+  finally{ b.disabled = false; }
+};
 
 // ---------- envio ----------
 $('form').onsubmit = async (ev) => {
@@ -375,6 +548,14 @@ $('form').onsubmit = async (ev) => {
 
   const faltando = attrsAtuais.filter(a => !dados.attributes[a.id]).map(a => a.name);
   if(faltando.length){ btn.disabled = false; return aviso('Preencha a ficha técnica: ' + faltando.join(', '), 'err'); }
+  if(gradeAtiva){
+    if(!$('gradeTabela').value || !$('gradeLinha').value){
+      btn.disabled = false;
+      return aviso('Escolha a tabela de medidas e o tamanho deste anúncio (crie uma tabela se ainda não tiver).', 'err');
+    }
+    dados.attributes.SIZE_GRID_ID = $('gradeTabela').value;
+    dados.attributes.SIZE_GRID_ROW_ID = $('gradeLinha').value;
+  }
   if(!fotos.length){ btn.disabled = false; return aviso('Adicione ao menos uma foto.', 'err'); }
 
   try{
@@ -385,8 +566,9 @@ $('form').onsubmit = async (ev) => {
     msg.innerHTML = `Anúncio <strong>${r.id}</strong> publicado (${r.status}).` +
       (r.permalink ? ` <a href="${r.permalink}" target="_blank" rel="noopener">Abrir no Mercado Livre →</a>` : '') +
       (r.description_ok === false ? '<br>Atenção: a descrição não foi salva — edite o anúncio para incluí-la.' : '');
-    ev.target.reset(); fotos = []; pintarFotos();
+    ev.target.reset(); fotos = []; pintarFotos(); categoriaCarregada = '';
     $('sugestoes').innerHTML = ''; $('fsAttrs').hidden = true; $('catInfo').textContent = '';
+    iniciarGrade(false);
   }catch(e){ aviso('Não publicou:\n' + e.message, 'err'); }
   finally{ btn.disabled = false; }
 };
