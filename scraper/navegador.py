@@ -16,10 +16,10 @@ import time
 from concurrent.futures import Future
 from urllib.parse import urlparse
 
-from scrape_cli import PRODUTO_TESTE, TESTE_URL, _bloqueado, _contexto
+from scrape_cli import LOGIN_URL, PRODUTO_TESTE, TESTE_URL, _bloqueado, _contexto
 
 DESTINOS = {
-    "login": "https://www.mercadolivre.com.br/login",
+    "login": LOGIN_URL,
     "desbloquear": TESTE_URL,
 }
 INATIVIDADE_S = 10 * 60   # sem clique/tecla nesse tempo, fecha e devolve o perfil

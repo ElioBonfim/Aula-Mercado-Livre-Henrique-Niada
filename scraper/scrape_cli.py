@@ -19,6 +19,10 @@ RAIZ = pathlib.Path(__file__).parent
 PERFIL = RAIZ / ".sessao_ml"
 SAIDA = RAIZ / "saida"
 TESTE_URL = "https://lista.mercadolivre.com.br/fone-de-ouvido"  # rota bloqueada p/ anonimo
+# Login: o endereco antigo (mercadolivre.com.br/login) passou a dar 404 (medido em 19/09/2026).
+# Este e o link "Entre" da pagina inicial do ML; depois de logar, volta para o .com.br.
+LOGIN_URL = ("https://www.mercadolivre.com/jms/mlb/lgz/login?platform_id=ML"
+             "&go=https%3A%2F%2Fwww.mercadolivre.com.br%2F&loginType=explicit")
 UA = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36",
     "Accept-Language": "pt-BR,pt;q=0.9",
@@ -57,7 +61,7 @@ def login():
     with sync_playwright() as p:
         ctx = _contexto(p, headless=False)
         pg = ctx.pages[0] if ctx.pages else ctx.new_page()
-        pg.goto("https://www.mercadolivre.com.br/login", wait_until="domcontentloaded")
+        pg.goto(LOGIN_URL, wait_until="domcontentloaded")
         input("Terminou o login? Volte aqui e aperte ENTER para salvar a sessao... ")
         pg.goto(TESTE_URL, wait_until="domcontentloaded")
         motivo = _bloqueado(pg.url, pg.content())
