@@ -43,6 +43,9 @@ const db = new DatabaseSync(DB_FILE);
 try { fs.chmodSync(DB_FILE, 0o600); } catch {}
 db.exec('PRAGMA journal_mode = WAL');
 db.exec('PRAGMA foreign_keys = ON');
+// Dois processos escrevem neste banco: o painel (npm start) e o servidor MCP (mcp.js).
+// Com WAL a leitura nunca trava, mas duas escritas ao mesmo tempo dariam SQLITE_BUSY na hora.
+db.exec('PRAGMA busy_timeout = 5000');
 db.exec(`
   CREATE TABLE IF NOT EXISTS contas (
     ml_user_id    INTEGER PRIMARY KEY,

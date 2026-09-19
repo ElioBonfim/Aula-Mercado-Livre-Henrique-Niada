@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "mercado-livre": {
+      "command": "node",
+      "args": ["mcp.js"],
+      "env": {}
+    }
+  }
+}

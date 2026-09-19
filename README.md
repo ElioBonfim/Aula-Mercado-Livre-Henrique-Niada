@@ -55,7 +55,8 @@ Mudou o código? `Ctrl+C` e `npm start` de novo: painel e scraper reiniciam, e *
 11. [Testes](#11-testes)
 12. [Quando der errado](#12-quando-der-errado)
 13. [Segurança](#13-segurança)
-14. [Créditos e licença](#14-créditos-e-licença)
+14. [MCP: o painel dentro do Claude Code](#14-mcp-o-painel-dentro-do-claude-code)
+15. [Créditos e licença](#15-créditos-e-licença)
 
 ---
 
@@ -223,6 +224,8 @@ A API escuta **só em 127.0.0.1**, de propósito. Um perfil de navegador aceita 
 ├── parar.js                 npm run parar: fecha painel, scraper e túnel (a próxima URL será nova)
 ├── atualizar.js             npm run atualizar: traz as correções do repositório da aula
 ├── server.js                painel (localhost) e porta pública (/callback, /webhook)
+├── mcp.js                   servidor MCP local: as rotas do painel como ferramentas do Claude Code
+├── .mcp.json                registra o servidor MCP para quem abrir o Claude Code nesta pasta
 ├── db.js                    SQLite: contas (tokens cifrados), senha, sessões, URLs, produtos
 ├── app-ml.js                valida App ID/chave e lê o cadastro do app no DevCenter
 ├── tunel.js                 túnel HTTPS: cloudflared, com localtunnel de reserva
@@ -674,6 +677,7 @@ npm test
 | `test-analise.js` | janela até ontem, série fora de ordem, tendência e "pouco dado", curva ABC, lucro real, margem, preço mínimo, frete por unidade, venda cancelada saindo da conta |
 | `test-config.js` | a regra do aviso "a URL mudou": confere, mudou, barra no fim, fluxos, plano B |
 | `test-servidor.js` | sobe os dois servidores e prova as fronteiras: senha nunca criada pela internet, limite de tentativas (por IP e somado), cookie `Secure` online, `PAINEL_ONLINE=0`, porta local só para localhost, site de fora não cria a senha, `state` do OAuth de uso único, sessão revogável, sem escapar de `public/` |
+| `test-mcp.js` | o servidor MCP por stdio de verdade: toda ferramenta cai numa rota que existe, `stdout` só com JSON-RPC, notificação sem resposta, erro de ferramenta como `isError` legível, e `ML_MCP_ESCRITA=0` escondendo e bloqueando o que muda dados |
 
 Todos usam banco temporário: rodar teste não toca no seu `dados.sqlite`. O scraper tem os dele:
 
@@ -748,7 +752,54 @@ node -e "require('./ambiente').carregar();require('./db').db.prepare(\"DELETE FR
 
 ---
 
-## 14. Créditos e licença
+## 14. MCP: o painel dentro do Claude Code
+
+O `mcp.js` é um servidor **MCP local**: ele entrega ao Claude Code (ou a outro cliente MCP) as mesmas capacidades do painel — listar anúncios, melhores produtos, curva ABC, análise por anúncio, publicar, editar, medir posição — e mais o repasse para a API do Mercado Livre inteira. Assim dá para perguntar em português, no terminal, e o Claude Code busca o dado:
+
+> *"quais foram meus 10 melhores produtos nos últimos 30 dias?"*
+> *"quem está na curva A e perdendo venda?"*
+> *"grave custo de R$ 42,30 no MLB1234567890 e me diga a margem"*
+
+**Como ligar.** Abra o Claude Code **na pasta do projeto**. O `.mcp.json` já está no repositório: ele pergunta se você aprova o servidor `mercado-livre` e pronto. Confira com o comando `/mcp` — deve aparecer `mercado-livre: connected`. Nada a instalar: o servidor não tem dependência nenhuma além do próprio Node.
+
+**Não pede login nem OAuth.** Ele usa a conta que **você já conectou no painel** (passo 3 das Configurações). Os tokens continuam cifrados no SQLite e são renovados pelo mesmo código do painel. Se nenhuma conta estiver conectada, as ferramentas dizem isso em vez de falhar em silêncio.
+
+**Não abre porta nenhuma.** A conversa é por `stdin`/`stdout`, entre o Claude Code e o processo, neste computador. O túnel não publica nada disso — e **de propósito não existe rota HTTP de repasse** para a API do ML: pela porta pública ela viraria "faça qualquer coisa na conta do vendedor" para quem descobrisse a URL.
+
+**O painel não precisa estar rodando.** O `npm start` e o MCP podem conviver: os dois escrevem no mesmo SQLite em modo WAL. Só a ferramenta de posição (`ml_posicao`) depende do scraper no ar.
+
+### As ferramentas
+
+| Ferramenta | O que faz |
+|---|---|
+| `ml_contas` · `ml_conta_usar` | contas conectadas; trocar a ativa |
+| `ml_anuncios` | listar anúncios. `sort=vendas_desc` = **melhores produtos**, `sort=abc` = **curva ABC**, `sort=queda` = quem está caindo |
+| `ml_periodo` | vendas, curva ABC, tendência, frete real e lucro de até 50 anúncios |
+| `ml_anuncio` · `ml_analise` · `ml_qualidade` · `ml_upgrades` | anúncio completo, painel do anúncio na janela, health e sugestões do ML, trocas de tipo |
+| `ml_posicao` · `ml_termos` · `ml_termo_add` · `ml_termo_remover` | posição na busca (usa o scraper) e termos acompanhados |
+| `ml_publicar` · `ml_editar` · `ml_editar_descricao` · `ml_trocar_tipo` | publicar e editar anúncio |
+| `ml_custo` · `ml_imposto` | custo por anúncio e imposto da conta — é o que falta para sair lucro e margem |
+| `ml_prever_categoria` · `ml_categoria` · `ml_tipos_anuncio` | apoio ao cadastro |
+| `ml_config` · `ml_scraper` · `ml_notificacoes` · `ml_ads` | estado do túnel, do scraper, notificações e Mercado Ads |
+| `ml_api` | **a API do ML inteira**: qualquer caminho de `api.mercadolibre.com` com o token da conta ativa |
+
+Cada ferramenta é uma rota do painel — o cálculo de curva ABC, tendência, frete e lucro é o **mesmo** que a tela mostra (`server.js` + `public/analise.js`), não uma segunda implementação. Um teste (`test-mcp.js`) confere que toda ferramenta aponta para uma rota que existe: renomeou rota, quebra no `npm test`, não na frente do usuário.
+
+### Só leitura
+
+As ferramentas que mudam algo (publicar, editar, custo, imposto, trocar tipo, e `POST`/`PUT`/`DELETE` no `ml_api`) vêm **ligadas** — é o seu painel. Para deixar o servidor apenas de leitura, ponha no `.env`:
+
+```
+ML_MCP_ESCRITA=0
+```
+
+Com isso elas somem da lista e, se alguém insistir, a resposta explica por quê. O Claude Code ainda pede sua aprovação a cada chamada, de qualquer forma.
+
+Para depurar fora do Claude Code: `npm run mcp` e digite uma linha de JSON-RPC (ex.: `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`). O log vai para o `stderr`; o `stdout` só carrega protocolo.
+
+---
+
+## 15. Créditos e licença
 
 Projeto da **Aula Mercado Livre - Henrique Niada**.
 
