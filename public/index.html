@@ -47,6 +47,8 @@
   #sugestoes button{background:#eef3fd;color:var(--brand);font-size:13px;padding:6px 10px;font-weight:500}
   #catInfo{font-size:13px;color:var(--muted);margin-top:6px}
   /* campo que o ML pediu depois de recusar */
+  .alertaMarca{background:#fff4e0;border:1px solid #f0c46b;color:#7a4a00;border-radius:var(--radius);padding:10px 12px;margin-top:8px;font-size:14px}
+  .alertaMarca p{margin:0 0 8px}
   #attrs .pedido{background:#fff4e0;border:1px solid #f0c46b;border-radius:var(--radius);padding:2px 12px 12px;margin:12px 0}
   /* tabela de medidas */
   #gradeCriar{margin-top:18px}
@@ -384,10 +386,18 @@ function campoAtributo(a, { obrigatorio = false, condicional = false } = {}){
     lab.appendChild(h);
   }
   let campo;
-  if(a.values.length){
+  if(a.values.length && (a.value_type === 'list' || a.value_type === 'boolean')){
     campo = document.createElement('select');
     campo.add(new Option('— selecione —', ''));
     a.values.forEach(v => campo.add(new Option(v, v)));   // textContent: vem do ML
+  }else if(a.values.length){
+    // Texto com sugestões (ex.: Marca): o ML aceita qualquer valor; a lista é só sugestão.
+    // Como select, não dava nem para escrever "Genérica".
+    campo = document.createElement('input');
+    const dl = document.createElement('datalist'); dl.id = 'dl_' + a.id;
+    a.values.forEach(v => dl.appendChild(new Option(v, v)));
+    campo.setAttribute('list', dl.id); campo.placeholder = 'digite ou escolha da lista';
+    wrap.appendChild(dl);
   }else{
     campo = document.createElement('input');
     const numerico = a.value_type === 'number' || (a.value_type === 'number_unit' && a.unidades?.length);
@@ -436,13 +446,42 @@ function campoGtin(a){
       motivo.hidden = motivo.disabled = !cb.checked;
       campo.disabled = cb.checked; if(cb.checked) campo.value = '';
     };
-    const aviso2 = document.createElement('p'); aviso2.className = 'hint'; aviso2.style.margin = '6px 0 0';
-    aviso2.textContent = 'Só vale para produto genérico, artesanal ou kit. Produto de marca (ex.: Logitech) precisa do código real — o Mercado Livre recusa o motivo.';
-    aviso2.hidden = true;
-    cb.addEventListener('change', () => { aviso2.hidden = !cb.checked; });
-    wrap.append(chk, motivo, aviso2);
+    const nota = document.createElement('p'); nota.className = 'hint'; nota.id = 'gtinNota'; nota.style.margin = '6px 0 0';
+    nota.textContent = 'Vale para produto genérico (sem marca), artesanal ou kit.';
+    nota.hidden = true;
+    const alerta = document.createElement('div'); alerta.className = 'alertaMarca'; alerta.id = 'gtinAlerta'; alerta.hidden = true;
+    alerta.setAttribute('role', 'alert');
+    const txt = document.createElement('p'); txt.id = 'gtinAlertaTexto';
+    const trocar = document.createElement('button'); trocar.type = 'button'; trocar.className = 'ghost';
+    trocar.textContent = 'Trocar a marca para "Genérica"';
+    trocar.onclick = () => {
+      const m = $('attr_BRAND'); if(!m) return;
+      m.value = 'Genérica'; m.dispatchEvent(new Event('change', { bubbles: true })); checarMarcaGtin();
+    };
+    alerta.append(txt, trocar);
+    wrap.append(chk, motivo, nota, alerta);
   }
   return wrap;
+}
+
+// "Não tem código de barras" + uma marca de verdade = recusa certa do ML (medido: Logitech com
+// qualquer modelo e qualquer motivo foi recusado; Genérica foi aceita). Avisa na hora e oferece
+// a troca em um clique. Não troca sozinho: se o produto É da marca, o certo é o código real.
+const MARCA_GENERICA = /^(gen[eé]ric[oa]|sem marca)$/i;
+function checarMarcaGtin(){
+  const cb = $('semGtin'), alerta = $('gtinAlerta'), nota = $('gtinNota');
+  if(!cb || !alerta) return;
+  const marca = ($('attr_BRAND')?.value || '').trim();
+  const deMarca = cb.checked && marca && !MARCA_GENERICA.test(marca);
+  alerta.hidden = !deMarca;
+  if(nota) nota.hidden = !cb.checked || deMarca;
+  if(deMarca){
+    $('gtinAlertaTexto').textContent = `Com a marca "${marca}", o Mercado Livre exige o código de barras e recusa este motivo. `
+      + `Se o produto é genérico (sem marca), troque a marca. Se ele é mesmo ${marca}, desmarque esta opção e digite o código da embalagem.`;
+  }
+}
+for(const ev of ['input', 'change']){
+  document.addEventListener(ev, (e) => { if(e.target.id === 'attr_BRAND' || e.target.id === 'semGtin') checarMarcaGtin(); });
 }
 
 // Dígito verificador do EAN/GTIN (8, 12, 13 ou 14 dígitos).
