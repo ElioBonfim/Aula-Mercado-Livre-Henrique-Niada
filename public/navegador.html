@@ -11,13 +11,6 @@
   [hidden]{display:none !important}  /* regras com display abaixo não podem vencer o hidden */
   body{margin:0;background:var(--bg);color:var(--ink);
     font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
-  header{background:#fff159;padding:14px 20px;display:flex;justify-content:space-between;
-    align-items:center;flex-wrap:wrap;gap:10px}
-  header h1{font-size:17px;margin:0;font-weight:600}
-  nav{display:flex;gap:14px;font-size:13px}
-  nav a{color:#1a1a1a}
-  nav a[aria-current]{font-weight:700;text-decoration:none}
-  .cabecaNota{font-size:13px;margin:0}
   main{max-width:1100px;margin:0 auto;padding:24px 16px 72px}
   section.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
     padding:18px 20px;margin-bottom:20px}
@@ -67,16 +60,30 @@
   .teclado .campo{flex:1 1 260px}
   .teclado input{width:100%}
   .rodape{font-size:12px;color:var(--muted);margin:10px 0 0}
+  .cabecaNota{font-size:13px;margin:0;color:#4a4712;background:rgba(255,255,255,.55);border-radius:999px;padding:6px 12px}
 </style>
+<link rel="stylesheet" href="/layout.css">
 </head>
 <body>
+<div class="app">
+  <aside class="lateral">
+    <div class="marca"><b>ML</b><span>Gestor ML</span></div>
+    <nav aria-label="Telas do painel">
+      <a href="/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10.5 12 4l8 6.5"/><path d="M6.5 10v9h11v-9"/></svg>Início</a>
+      <a href="/publicar.html"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="4.5"/><path d="M12 9v6M9 12h6"/></svg>Publicar</a>
+      <a href="/anuncios.html"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10"/></svg>Meus anúncios</a>
+      <a href="/calculadora.html"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="3"/><path d="M8.5 7.5h7M8.5 12h.01M12 12h.01M15.5 12h.01M8.5 16h.01M12 16h.01M15.5 16h.01"/></svg>Calculadora</a>
+      <a href="/navegador.html" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M4 12h16M12 4c2.4 2.6 2.4 12.8 0 16M12 4c-2.4 2.6-2.4 12.8 0 16"/></svg>Navegador</a>
+      <a href="/configuracao.html"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 8h14M5 16h14"/><circle cx="10" cy="8" r="2.3"/><circle cx="15" cy="16" r="2.3"/></svg>Configurações</a>
+    </nav>
+    <p class="lateral-pe">Painel da aula, rodando no seu computador.</p>
+  </aside>
+  <div class="conteudo">
 <header>
-  <div>
-    <h1>Navegador do scraper</h1>
-    <nav><a href="/">Publicar</a><a href="/anuncios.html">Meus anúncios</a><a href="/navegador.html" aria-current="page">Navegador</a><a href="/configuracao.html">Configurações</a></nav>
-  </div>
+  <h1>Navegador do scraper</h1>
   <p class="cabecaNota">Uma sessão só, neste Mac — vale para todas as contas.</p>
 </header>
+
 
 <main>
   <div id="msg" role="status" aria-live="polite"></div>
@@ -135,6 +142,8 @@
     </div>
   </section>
 </main>
+  </div>
+</div>
 
 <script>
 const $ = (id) => document.getElementById(id);

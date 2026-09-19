@@ -1042,6 +1042,64 @@ const routes = {
     };
   },
 
+  // Tela de início: como foi o dia de hoje, contra ontem e contra os últimos dias.
+  // Sai da cópia local dos pedidos (a mesma que a listagem usa), depois de sincronizar.
+  // Hoje é um dia pela METADE: por isso não usa `janela()`, que só fecha dias inteiros.
+  'GET /api/dashboard': async (url) => {
+    const conta = contaOuErro();
+    const dias = Math.min(30, Math.max(7, Number(url.searchParams.get('dias')) || 14));
+    const sync = await sincronizarVendas(conta, dias);
+
+    const hoje = A.diaLocal(new Date().toISOString());
+    const meioDia = (d, n = 0) => new Date(Date.parse(`${d}T12:00:00.000Z`) + n * 864e5).toISOString().slice(0, 10);
+    const inicio = (d) => new Date(Date.parse(`${d}T03:00:00.000Z`)).toISOString(); // 00h de Brasília
+    const primeiro = meioDia(hoje, -(dias - 1));
+    const amanha = meioDia(hoje, 1);
+
+    const porDia = Object.fromEntries(D.vendasPorDia(conta.ml_user_id, inicio(primeiro), inicio(amanha))
+      .map((l) => [l.dia, l]));
+    const doDia = (d) => {
+      const x = porDia[d] || {};
+      const un = x.unidades || 0, ped = x.pedidos || 0, fat = x.faturamento || 0;
+      return { dia: d, unidades: un, pedidos: ped, faturamento: fat, tarifas: x.tarifas || 0,
+        ticket: ped ? fat / ped : 0 };
+    };
+    const serie = Array.from({ length: dias }, (_, i) => doDia(meioDia(primeiro, i)));
+    const anteriores = serie.slice(0, -1);                       // sem hoje: dias inteiros
+    const media = (k) => (anteriores.length
+      ? anteriores.reduce((s, d) => s + d[k], 0) / anteriores.length : 0);
+
+    // Top do dia; sem venda hoje, mostra o da última semana (com aviso de qual período é).
+    const topHoje = D.vendasTopItens(conta.ml_user_id, inicio(hoje), inicio(amanha), 5);
+    const periodo = topHoje.length ? 'hoje' : '7dias';
+    const top = topHoje.length ? topHoje
+      : D.vendasTopItens(conta.ml_user_id, inicio(meioDia(hoje, -6)), inicio(amanha), 5);
+    let info = {};
+    if (top.length) {
+      // Título e foto são enfeite: se o ML falhar, a tela continua de pé com o código.
+      try {
+        info = Object.fromEntries((await ml(`/items?ids=${top.map((x) => x.item_id).join(',')}`
+          + '&attributes=id,title,thumbnail,permalink')).filter((x) => x.code === 200)
+          .map((x) => [x.body.id, x.body]));
+      } catch { info = {}; }
+    }
+
+    return {
+      dia: hoje, dias,
+      hoje: doDia(hoje), ontem: doDia(meioDia(hoje, -1)),
+      media: { faturamento: media('faturamento'), unidades: media('unidades'), pedidos: media('pedidos') },
+      serie,
+      top: {
+        periodo,
+        itens: top.map((x) => ({ ...x, titulo: info[x.item_id]?.title || null,
+          foto: info[x.item_id]?.thumbnail || null, link: info[x.item_id]?.permalink || null })),
+      },
+      recentes: D.vendasRecentes(conta.ml_user_id, inicio(hoje), inicio(amanha), 8),
+      sincronizado_em: sync.ate, baixados_agora: sync.baixados,
+      conta: { nickname: conta.nickname || null },
+    };
+  },
+
   // Imposto sobre a venda (% do faturamento), da conta inteira.
   'PUT /api/imposto': async (_u, body) => {
     const conta = contaOuErro();
@@ -1715,7 +1773,8 @@ async function tratarPainel(req, res, online = false) {
 
   // estáticos
   let file;
-  try { file = url.pathname === '/' ? 'index.html' : decodeURIComponent(url.pathname).replace(/^\/+/, ''); }
+  // A raiz é a tela de início (dashboard do dia); publicar virou /publicar.html.
+  try { file = url.pathname === '/' ? 'inicio.html' : decodeURIComponent(url.pathname).replace(/^\/+/, ''); }
   catch { return send(400, { error: 'caminho inválido' }); }
   const full = path.join(PUBLIC, file);
   if (!full.startsWith(PUBLIC + path.sep)) return send(403, { error: 'forbidden' });

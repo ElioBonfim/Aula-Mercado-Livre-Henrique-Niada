@@ -372,6 +372,35 @@ const vendasResumo = (mlUserId, j) =>
               FROM vendas WHERE ml_user_id=? AND data >= ? AND data < ? AND ${EM_VENDA}
               GROUP BY item_id`).all(j.meio, j.meio, mlUserId, j.de, j.ate);
 
+// Vendas da conta somadas por DIA do vendedor (Brasília, UTC-3), para o painel de início.
+// O recorte é por intervalo cru (`de`/`ate` ISO) e não pela janela de dias fechados: o
+// dashboard mostra HOJE, que ainda está pela metade.
+const vendasPorDia = (mlUserId, de, ate) =>
+  db.prepare(`SELECT substr(datetime(data, '-3 hours'), 1, 10) AS dia,
+                     SUM(quantidade) AS unidades,
+                     COUNT(DISTINCT order_id) AS pedidos,
+                     SUM(quantidade * preco_unit) AS faturamento,
+                     SUM(quantidade * COALESCE(tarifa_unit, 0)) AS tarifas
+              FROM vendas WHERE ml_user_id=? AND data >= ? AND data < ? AND ${EM_VENDA}
+              GROUP BY dia ORDER BY dia`).all(mlUserId, de, ate);
+
+// Os anúncios que mais faturaram no intervalo.
+const vendasTopItens = (mlUserId, de, ate, limite = 5) =>
+  db.prepare(`SELECT item_id,
+                     SUM(quantidade) AS unidades,
+                     COUNT(DISTINCT order_id) AS pedidos,
+                     SUM(quantidade * preco_unit) AS faturamento
+              FROM vendas WHERE ml_user_id=? AND data >= ? AND data < ? AND ${EM_VENDA}
+              GROUP BY item_id ORDER BY faturamento DESC LIMIT ?`).all(mlUserId, de, ate, limite);
+
+// Os últimos pedidos do intervalo, um por linha (um pedido pode ter vários anúncios).
+const vendasRecentes = (mlUserId, de, ate, limite = 8) =>
+  db.prepare(`SELECT order_id, MAX(data) AS data, SUM(quantidade) AS quantidade,
+                     SUM(quantidade * preco_unit) AS total,
+                     COUNT(DISTINCT item_id) AS anuncios, MIN(item_id) AS item_id
+              FROM vendas WHERE ml_user_id=? AND data >= ? AND data < ? AND ${EM_VENDA}
+              GROUP BY order_id ORDER BY data DESC LIMIT ?`).all(mlUserId, de, ate, limite);
+
 // Unidades por linha de pedido, para montar a série diária de alguns anúncios.
 function vendasDiarias(ids, j) {
   if (!ids.length) return [];
@@ -513,4 +542,5 @@ module.exports = {
   palavraAdicionar, palavraRemover, palavrasListar, posicaoSalvar, posicoesHistorico, notificacaoSalvar, notificacoesListar,
   custoGravar, custoObter, custosDe, impostoLer, impostoGravar, STATUS_VENDA,
   vendasGravar, vendasResumo, vendasDiarias, vendasUltimas, enviosSemFrete, fretePorUnidade, freteGravar,
+  vendasPorDia, vendasTopItens, vendasRecentes,
 };

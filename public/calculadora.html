@@ -1,0 +1,665 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Calculadora de margem — Mercado Livre</title>
+<style>
+  :root{--bg:#f2f3f5;--card:#fff;--ink:#1a1a1a;--muted:#5f6368;--line:#e0e2e6;
+    --brand:#2968c8;--ok:#00a650;--err:#d93025;--radius:8px;
+    --good:#0b6b33;--warn:#8a6100;--low:#a1500a;--bad:#8c1d18}
+  *{box-sizing:border-box}
+  [hidden]{display:none !important}   /* .chk usa display:flex e venceria o hidden */
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  main{max-width:1180px;margin:0 auto;padding:24px 16px 72px;width:100%}
+  h2{font-size:15px;margin:0;font-weight:700}
+  .sub{color:var(--muted);font-size:13px;margin:2px 0 0}
+  input,select,button{font:inherit}
+
+  .colunas{display:grid;grid-template-columns:1fr;gap:18px;align-items:start}
+  @media (min-width:1080px){ .colunas{grid-template-columns:350px minmax(0,1fr)}
+    .entrada{position:sticky;top:78px}
+  }
+
+  section.bloco{background:var(--card);border:1px solid var(--line);border-radius:12px;
+    padding:18px;margin-bottom:18px}
+  .passo{display:flex;gap:10px;align-items:flex-start;margin-bottom:14px}
+  .passo b{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;flex:0 0 24px;
+    background:#17181a;color:#ffe600;font-size:12px}
+
+  .linha{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .campo{margin-bottom:12px;min-width:0}
+  .campo label{display:block;font-size:13px;font-weight:500;margin-bottom:4px}
+  .campo input,.campo select{width:100%;padding:9px 11px;border:1px solid var(--line);
+    border-radius:var(--radius);background:#fff;color:var(--ink)}
+  .campo input:focus,.campo select:focus{outline:2px solid var(--brand);outline-offset:1px}
+
+  .seg{display:flex;gap:4px;background:#eef0f3;border-radius:10px;padding:4px;margin-bottom:12px}
+  .seg button{flex:1;background:none;border:0;border-radius:7px;padding:8px 10px;font-size:13px;
+    font-weight:600;color:var(--muted);cursor:pointer}
+  .seg button[aria-pressed=true]{background:#fff;color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.14)}
+  .seg.grande button{font-size:14px;padding:10px 14px}
+
+  .pills{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+  .pill{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;
+    border:1px solid var(--line);background:#fff;font-size:13px;font-weight:600;color:var(--muted);
+    cursor:pointer}
+  .pill[aria-pressed=true]{border-color:#17181a;color:var(--ink);background:#f7f8fa}
+  .selo{display:grid;place-items:center;width:20px;height:20px;border-radius:6px;flex:0 0 20px;
+    font-size:10px;font-weight:800;letter-spacing:-.02em}
+  .opcao{border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:12px}
+  .opcao .tit{font-size:13px;font-weight:700;display:flex;align-items:center;gap:8px;margin-bottom:8px}
+  .chk{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+  .chk input{width:auto}
+
+  details.avancadas{border-top:1px solid var(--line);padding-top:12px}
+  details.avancadas summary{cursor:pointer;font-size:13px;font-weight:600}
+  .regra{border:1px solid var(--line);border-radius:10px;padding:10px;margin-top:10px}
+  .regra .tit{font-size:13px;font-weight:700;display:flex;align-items:center;gap:8px;margin-bottom:8px}
+  .regra .tres{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  .regra label{display:block;font-size:11px;color:var(--muted);margin-bottom:3px}
+  .regra input{width:100%;padding:7px 8px;border:1px solid var(--line);border-radius:6px;font-size:13px}
+
+  .acoes{display:flex;gap:8px;flex-wrap:wrap}
+  button.secundario{background:#fff;color:var(--ink);border:1px solid #d5d7db;border-radius:8px;
+    padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer}
+  button.secundario:hover{background:#f2f3f5}
+
+  .heroi{background:#17181a;color:#fff;border-radius:12px;padding:20px;margin-bottom:18px}
+  .heroi .olho{font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#ffe600}
+  .heroi h2{font-size:22px;margin:6px 0 2px;letter-spacing:-.02em}
+  .heroi p{margin:0;color:#b9bcc2;font-size:13px}
+  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-top:16px}
+  .tile{background:#232528;border-radius:10px;padding:12px}
+  .tile .k{font-size:12px;color:#b9bcc2}
+  .tile .v{font-size:19px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+  .tile.destaque{background:#ffe600;color:#1a1a1a}
+  .tile.destaque .k{color:#5b5406}
+  .heroi.vazio{background:var(--card);color:var(--ink);border:1px dashed #c8cbd0;text-align:center}
+  .heroi.vazio h2{font-size:16px;color:var(--ink)}
+  .heroi.vazio p{color:var(--muted)}
+
+  .cabeca{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap;
+    margin-bottom:12px}
+  .ordenar{font-size:13px;color:var(--muted);display:flex;align-items:center;gap:6px}
+  .ordenar select{padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:#fff}
+
+  .rolar{overflow-x:auto}
+  table{border-collapse:collapse;width:100%;font-size:14px}
+  th,td{padding:10px 8px;text-align:right;white-space:nowrap}
+  th:first-child,td:first-child,th:nth-child(2),td:nth-child(2){text-align:left}
+  thead th{font-size:12px;color:var(--muted);font-weight:600;border-bottom:1px solid var(--line)}
+  tbody tr{border-bottom:1px solid var(--line)}
+  tbody tr.topo{background:#fffdf0}
+  .rank{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;
+    background:#eef0f3;font-size:12px;font-weight:700}
+  tr.topo .rank{background:#ffe600}
+  .ident{display:flex;align-items:center;gap:8px}
+  .bandeira{font-size:11px;font-weight:700;color:#7a6a00;background:#fff6b0;border-radius:999px;
+    padding:1px 7px;margin-left:6px}
+  .num{font-variant-numeric:tabular-nums}
+  .menor{font-size:12px;color:var(--muted)}
+  .pos{color:var(--good)}.neg{color:var(--bad)}
+  .good{color:var(--good)}.warn{color:var(--warn)}.low{color:var(--low)}.bad{color:var(--bad)}
+  .barra{display:block;height:5px;border-radius:3px;background:#eef0f3;margin-top:5px;min-width:70px}
+  .barra i{display:block;height:100%;border-radius:3px}
+  .barra i.good{background:#1e9e5a}.barra i.warn{background:#e3b341}
+  .barra i.low{background:#e08f3c}.barra i.bad{background:#e06055}
+  td.erro{color:var(--bad);font-size:13px;text-align:left;white-space:normal}
+
+  .insight{display:flex;gap:10px;align-items:flex-start;padding:12px 0;border-top:1px solid var(--line)}
+  .insight:first-of-type{border-top:0}
+  .insight .k{font-size:12px;color:var(--muted);display:block}
+  .insight b{display:block;font-size:14px}
+  .insight .v{font-size:13px;margin-right:10px}
+  .destaqueInsight{background:#e6f4ea;color:#0b6b33;border-radius:10px;padding:12px;font-size:13px;
+    margin-bottom:6px}
+  .colunasGrafico{display:flex;align-items:flex-end;gap:10px;height:150px;margin-top:8px}
+  .colunaG{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:6px;
+    min-width:0}
+  .colunaG .trilho{width:100%;height:100px;display:flex;align-items:flex-end;background:#f2f3f5;
+    border-radius:6px;overflow:hidden}
+  .colunaG .trilho i{display:block;width:100%;border-radius:6px 6px 0 0}
+  .colunaG .val{font-size:12px;font-weight:700;font-variant-numeric:tabular-nums}
+  .dica{display:flex;gap:8px;background:#fff8e1;border:1px solid #f0d78a;border-radius:10px;
+    padding:12px;font-size:13px;margin-top:14px;color:#6b5400}
+  .dica p{margin:0}
+  .vazio{color:var(--muted);font-size:14px;margin:0;padding:6px 0}
+  a{color:var(--brand)}
+</style>
+<link rel="stylesheet" href="/layout.css">
+</head>
+<body>
+<div class="app">
+  <aside class="lateral">
+    <div class="marca"><b>ML</b><span>Gestor ML</span></div>
+    <nav aria-label="Telas do painel">
+      <a href="/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10.5 12 4l8 6.5"/><path d="M6.5 10v9h11v-9"/></svg>Início</a>
+      <a href="/publicar.html"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="4.5"/><path d="M12 9v6M9 12h6"/></svg>Publicar</a>
+      <a href="/anuncios.html"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10"/></svg>Meus anúncios</a>
+      <a href="/calculadora.html" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="3"/><path d="M8.5 7.5h7M8.5 12h.01M12 12h.01M15.5 12h.01M8.5 16h.01M12 16h.01M15.5 16h.01"/></svg>Calculadora</a>
+      <a href="/navegador.html"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M4 12h16M12 4c2.4 2.6 2.4 12.8 0 16M12 4c-2.4 2.6-2.4 12.8 0 16"/></svg>Navegador</a>
+      <a href="/configuracao.html"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 8h14M5 16h14"/><circle cx="10" cy="8" r="2.3"/><circle cx="15" cy="16" r="2.3"/></svg>Configurações</a>
+    </nav>
+    <p class="lateral-pe">Painel da aula, rodando no seu computador.</p>
+  </aside>
+  <div class="conteudo">
+<header>
+  <h1>Calculadora de margem</h1>
+  <p class="cabecaNota">Compara Mercado Livre, Amazon, Magalu, Shopee e SHEIN.</p>
+</header>
+
+<main>
+  <div class="seg grande" role="group" aria-label="Modo de cálculo" style="max-width:520px">
+    <button type="button" id="modoDireto" aria-pressed="false">Já tenho preço</button>
+    <button type="button" id="modoReverso" aria-pressed="true">Quanto anunciar</button>
+  </div>
+
+  <div class="colunas">
+    <!-- ------------------ entrada ------------------ -->
+    <div class="entrada">
+      <section class="bloco">
+        <div class="passo"><b>1</b><div><h2>Dados do produto</h2>
+          <p class="sub">O que você paga e o que incide sobre a venda.</p></div></div>
+
+        <div class="linha">
+          <div class="campo"><label for="custo">Custo do produto (R$)</label>
+            <input id="custo" type="number" inputmode="decimal" step="0.01" placeholder="0,00"></div>
+          <div class="campo"><label for="extras">Custos extras (R$)</label>
+            <input id="extras" type="number" inputmode="decimal" step="0.01" placeholder="0,00"></div>
+        </div>
+
+        <div class="campo"><label for="categoria">Categoria</label>
+          <select id="categoria"></select></div>
+
+        <div class="linha">
+          <div class="campo"><label for="peso">Peso (kg)</label>
+            <input id="peso" type="number" inputmode="decimal" step="0.01" placeholder="0,5"></div>
+          <div class="campo"><label for="tamanho">Tamanho</label>
+            <select id="tamanho"></select></div>
+        </div>
+
+        <div class="campo"><label for="imposto">Imposto sobre a venda (%)</label>
+          <input id="imposto" type="number" inputmode="decimal" step="0.01" placeholder="0"></div>
+      </section>
+
+      <section class="bloco">
+        <div class="passo"><b>2</b><div><h2 id="tituloPasso2">Meta de lucro</h2>
+          <p class="sub" id="subPasso2">Quanto você quer ganhar?</p></div></div>
+
+        <div id="blocoMeta">
+          <div class="seg" role="group" aria-label="Tipo de meta">
+            <button type="button" id="metaMargem" aria-pressed="true">Margem (%)</button>
+            <button type="button" id="metaLucro" aria-pressed="false">Lucro (R$)</button>
+          </div>
+          <div class="campo"><label for="metaValor" id="rotuloMeta">Margem líquida desejada (%)</label>
+            <input id="metaValor" type="number" inputmode="decimal" step="0.01" placeholder="20"></div>
+          <div class="linha">
+            <div class="campo"><label for="desconto">Desconto da oferta (%)</label>
+              <input id="desconto" type="number" inputmode="decimal" step="0.01" placeholder="0"></div>
+            <div class="campo"><label for="cupom">Cupom adicional (%)</label>
+              <input id="cupom" type="number" inputmode="decimal" step="0.01" placeholder="0"></div>
+          </div>
+        </div>
+
+        <div id="blocoPreco" hidden>
+          <div class="campo"><label for="precoVenda">Preço ao comprador (R$)</label>
+            <input id="precoVenda" type="number" inputmode="decimal" step="0.01" placeholder="0,00"></div>
+        </div>
+      </section>
+
+      <section class="bloco">
+        <div class="passo"><b>3</b><div><h2>Marketplaces</h2>
+          <p class="sub">Escolha os canais que entram na comparação.</p></div></div>
+
+        <div class="pills" id="pills"></div>
+
+        <div class="opcao" id="opcaoML">
+          <div class="tit"><span class="selo" id="seloML">ML</span> Mercado Livre — tipo de anúncio</div>
+          <div class="seg" style="margin-bottom:0" role="group" aria-label="Tipo de anúncio">
+            <button type="button" id="tipoClassico" aria-pressed="true">Clássico</button>
+            <button type="button" id="tipoPremium" aria-pressed="false">Premium</button>
+          </div>
+        </div>
+
+        <div class="opcao" id="opcaoShopee">
+          <div class="tit"><span class="selo" id="seloShopee">SP</span> Shopee — tipo de conta</div>
+          <div class="seg" style="margin-bottom:10px" role="group" aria-label="Tipo de conta na Shopee">
+            <button type="button" id="contaCnpj" aria-pressed="true">CNPJ</button>
+            <button type="button" id="contaCpf" aria-pressed="false">CPF</button>
+          </div>
+          <label class="chk" id="rotuloCpfAlto" hidden>
+            <input type="checkbox" id="cpfAlto"> Mais de 450 pedidos em 90 dias (+R$ 3,00/item)
+          </label>
+        </div>
+
+        <details class="avancadas">
+          <summary>Regras avançadas por marketplace</summary>
+          <p class="sub" style="margin:8px 0 0">Os valores prontos são estimativas. Aqui você põe o que a
+            <b>sua</b> conta paga de verdade; em branco, vale a estimativa.</p>
+          <div id="regras"></div>
+        </details>
+      </section>
+
+      <div class="acoes">
+        <button type="button" class="secundario" id="btLimpar">Limpar campos</button>
+        <button type="button" class="secundario" id="btExemplo">Preencher exemplo</button>
+      </div>
+    </div>
+
+    <!-- ------------------ resultados ------------------ -->
+    <div>
+      <div id="heroi"></div>
+
+      <section class="bloco" id="blocoComparativo">
+        <div class="cabeca">
+          <div><h2>Comparativo entre marketplaces</h2>
+            <p class="sub">Como o seu produto se sai em cada canal de venda.</p></div>
+          <label class="ordenar">Ordenar por
+            <select id="ordenar">
+              <option value="lucro">Lucro líquido</option>
+              <option value="margem">Margem</option>
+            </select>
+          </label>
+        </div>
+        <div class="rolar"><table id="tabela"></table></div>
+        <div class="dica"><p><b>Dica:</b> frete e comissão são estimativas e mudam por região, categoria,
+          contrato e nível da conta. Ajuste em “Regras avançadas” para decidir com os seus números.</p></div>
+      </section>
+
+      <section class="bloco" id="blocoInsights">
+        <h2>Insights da sua análise</h2>
+        <p class="sub" style="margin-bottom:6px">Resumo para decidir mais rápido.</p>
+        <div id="insights"></div>
+      </section>
+
+      <section class="bloco" id="blocoGrafico">
+        <h2>Margem por marketplace</h2>
+        <div class="colunasGrafico" id="graficoMargem"></div>
+      </section>
+    </div>
+  </div>
+</main>
+  </div>
+</div>
+
+<script src="/calculo-margem.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+const { MARKETPLACES, CATEGORIAS_GLOBAIS, TAMANHOS, precoParaMeta, calcularLucro } = Margem;
+
+const real = (v) => (v == null || Number.isNaN(v)) ? '—'
+  : Number(v).toLocaleString('pt-BR', { style:'currency', currency:'BRL' });
+const pct = (v) => (v == null || Number.isNaN(v)) ? '—'
+  : (v * 100).toLocaleString('pt-BR', { maximumFractionDigits:1 }) + '%';
+const num = (v) => { const n = parseFloat((v || '').toString().replace(',', '.')); return Number.isNaN(n) ? 0 : n; };
+
+// Mesmas faixas de cor da calculadora original.
+const faixaMargem = (m) => {
+  if (m == null || Number.isNaN(m)) return 'bad';
+  if (m >= 0.10) return 'good';
+  if (m >= 0.06) return 'warn';
+  if (m >= 0.03) return 'low';
+  return 'bad';
+};
+const SIGLA = { mercadolivre:'ML', amazon:'AM', magalu:'MG', shopee:'SP', shein:'SH' };
+function selo(mp, tamanho){
+  const s = document.createElement('span');
+  s.className = 'selo';
+  s.style.background = mp.cor; s.style.color = mp.corTexto;
+  if(tamanho) s.style.cssText += `width:${tamanho}px;height:${tamanho}px;font-size:${Math.round(tamanho*0.45)}px`;
+  s.textContent = SIGLA[mp.id] || mp.nome.slice(0, 2).toUpperCase();
+  return s;
+}
+
+const EXEMPLO = { custo:'45.90', extras:'2.50', categoria:'casa', peso:'0.5', tamanho:'pequeno',
+  imposto:'6', metaValor:'20', desconto:'10', cupom:'5', precoVenda:'99.90' };
+
+const estado = {
+  modo: 'reverso', metaTipo: 'margem', tipoAnuncio: 'classico',
+  shopeeConta: 'cnpj', shopeeCpfAlto: false, ordenarPor: 'lucro',
+  selecionados: new Set(Object.keys(MARKETPLACES)),
+  overrides: {},   // { mpId: { comissao, taxaFixa, frete } }
+};
+
+// ---------- monta o que é fixo ----------
+for(const c of CATEGORIAS_GLOBAIS){
+  const o = document.createElement('option'); o.value = c.id; o.textContent = c.nome;
+  $('categoria').appendChild(o);
+}
+for(const t of TAMANHOS){
+  const o = document.createElement('option'); o.value = t.id; o.textContent = t.nome;
+  $('tamanho').appendChild(o);
+}
+for(const mp of Object.values(MARKETPLACES)){
+  const b = document.createElement('button');
+  b.type = 'button'; b.className = 'pill'; b.setAttribute('aria-pressed', 'true');
+  b.append(selo(mp));
+  b.append(document.createTextNode(mp.nome));
+  b.onclick = () => {
+    estado.selecionados.has(mp.id) ? estado.selecionados.delete(mp.id) : estado.selecionados.add(mp.id);
+    b.setAttribute('aria-pressed', String(estado.selecionados.has(mp.id)));
+    calcular();
+  };
+  $('pills').appendChild(b);
+
+  const r = document.createElement('div');
+  r.className = 'regra';
+  const tit = document.createElement('div'); tit.className = 'tit';
+  tit.append(selo(mp), document.createTextNode(mp.nome));
+  const tres = document.createElement('div'); tres.className = 'tres';
+  for(const [campo, rotulo, passo] of [['comissao','Comissão (%)','0.1'],
+                                       ['taxaFixa','Taxa fixa (R$)','0.01'], ['frete','Frete (R$)','0.01']]){
+    const cx = document.createElement('div');
+    const l = document.createElement('label'); l.textContent = rotulo; l.htmlFor = `ov-${mp.id}-${campo}`;
+    const i = document.createElement('input');
+    i.id = `ov-${mp.id}-${campo}`; i.type = 'number'; i.step = passo; i.placeholder = 'auto';
+    i.oninput = () => {
+      (estado.overrides[mp.id] ||= {})[campo] = i.value;
+      calcular();
+    };
+    cx.append(l, i); tres.appendChild(cx);
+  }
+  r.append(tit, tres);
+  $('regras').appendChild(r);
+}
+$('seloML').style.cssText = `background:${MARKETPLACES.mercadolivre.cor};color:${MARKETPLACES.mercadolivre.corTexto}`;
+$('seloShopee').style.cssText = `background:${MARKETPLACES.shopee.cor};color:${MARKETPLACES.shopee.corTexto}`;
+
+// ---------- botões de dois estados ----------
+function par(aId, bId, aoTrocar){
+  const a = $(aId), b = $(bId);
+  const aplicar = (qual) => {
+    a.setAttribute('aria-pressed', String(qual === 'a'));
+    b.setAttribute('aria-pressed', String(qual === 'b'));
+    aoTrocar(qual);
+    calcular();
+  };
+  a.onclick = () => aplicar('a');
+  b.onclick = () => aplicar('b');
+}
+par('modoDireto', 'modoReverso', (q) => {
+  estado.modo = q === 'a' ? 'direto' : 'reverso';
+  const reverso = estado.modo === 'reverso';
+  $('blocoMeta').hidden = !reverso;
+  $('blocoPreco').hidden = reverso;
+  $('tituloPasso2').textContent = reverso ? 'Meta de lucro' : 'Preço de venda';
+  $('subPasso2').textContent = reverso ? 'Quanto você quer ganhar?' : 'Qual será o preço cobrado do comprador?';
+});
+par('metaMargem', 'metaLucro', (q) => {
+  estado.metaTipo = q === 'a' ? 'margem' : 'lucro';
+  $('rotuloMeta').textContent = estado.metaTipo === 'margem'
+    ? 'Margem líquida desejada (%)' : 'Lucro líquido desejado (R$)';
+});
+par('tipoClassico', 'tipoPremium', (q) => { estado.tipoAnuncio = q === 'a' ? 'classico' : 'premium'; });
+par('contaCnpj', 'contaCpf', (q) => {
+  estado.shopeeConta = q === 'a' ? 'cnpj' : 'cpf';
+  $('rotuloCpfAlto').hidden = estado.shopeeConta !== 'cpf';
+});
+$('cpfAlto').onchange = () => { estado.shopeeCpfAlto = $('cpfAlto').checked; calcular(); };
+$('ordenar').onchange = () => { estado.ordenarPor = $('ordenar').value; calcular(); };
+
+const CAMPOS = ['custo','extras','categoria','peso','tamanho','imposto','metaValor','desconto','cupom','precoVenda'];
+for(const id of CAMPOS) $(id).addEventListener('input', calcular);
+
+$('btLimpar').onclick = () => {
+  for(const id of ['custo','extras','peso','imposto','metaValor','desconto','cupom','precoVenda']) $(id).value = '';
+  for(const mp of Object.keys(MARKETPLACES)){
+    for(const campo of ['comissao','taxaFixa','frete']) $(`ov-${mp}-${campo}`).value = '';
+  }
+  estado.overrides = {};
+  calcular();
+};
+$('btExemplo').onclick = () => {
+  for(const [id, v] of Object.entries(EXEMPLO)) $(id).value = v;
+  calcular();
+};
+
+// ---------- cálculo ----------
+function parametros(){
+  const acrescimo = (TAMANHOS.find((t) => t.id === $('tamanho').value) || {}).acrescimoFrete || 0;
+  return {
+    custo: num($('custo').value),
+    custosExtras: num($('extras').value),
+    categoria: $('categoria').value,
+    pesoKg: num($('peso').value),
+    acrescimoTamanho: acrescimo,
+    impostoRate: num($('imposto').value) / 100,
+    tipoAnuncio: estado.tipoAnuncio,
+    shopeeCpfAlto: estado.shopeeConta === 'cpf' && estado.shopeeCpfAlto,
+    metaTipo: estado.metaTipo,
+    metaValor: estado.metaTipo === 'margem' ? num($('metaValor').value) / 100 : num($('metaValor').value),
+    desconto: num($('desconto').value) / 100,
+    cupom: num($('cupom').value) / 100,
+    precoVenda: num($('precoVenda').value),
+  };
+}
+
+function calcular(){
+  const base = parametros();
+  // Sem custo (ou sem preço, no modo direto) o resultado sairia só com taxa e frete:
+  // confunde mais do que ajuda, então a tela espera o dado.
+  const temDados = estado.modo === 'direto' ? base.precoVenda > 0 : base.custo > 0;
+
+  const resultados = [...estado.selecionados].map((id) => {
+    const mp = MARKETPLACES[id];
+    const p = { ...base };
+    const ov = estado.overrides[id] || {};
+    if(ov.comissao !== undefined && ov.comissao !== ''){
+      const v = parseFloat(ov.comissao.toString().replace(',', '.'));
+      if(!Number.isNaN(v)) p.overrideComissao = v / 100;
+    }
+    if(ov.taxaFixa !== undefined && ov.taxaFixa !== ''){
+      const v = parseFloat(ov.taxaFixa.toString().replace(',', '.'));
+      if(!Number.isNaN(v)) p.overrideTaxaFixa = v;
+    }
+    if(ov.frete !== undefined && ov.frete !== ''){
+      const v = parseFloat(ov.frete.toString().replace(',', '.'));
+      if(!Number.isNaN(v)) p.overrideFrete = v;
+    }
+    return { marketplace: mp, resultado: estado.modo === 'reverso' ? precoParaMeta(mp, p) : calcularLucro(mp, p) };
+  });
+  const chave = estado.ordenarPor === 'margem' ? 'margem' : 'lucro';
+  resultados.sort((a, b) => (b.resultado[chave] ?? -Infinity) - (a.resultado[chave] ?? -Infinity));
+
+  desenhar(resultados, temDados);
+}
+
+// ---------- desenho ----------
+function tile(k, v, destaque){
+  const d = document.createElement('div');
+  d.className = 'tile' + (destaque ? ' destaque' : '');
+  const a = document.createElement('div'); a.className = 'k'; a.textContent = k;
+  const b = document.createElement('div'); b.className = 'v'; b.textContent = v;
+  d.append(a, b);
+  return d;
+}
+
+function desenhar(resultados, temDados){
+  const validos = resultados.filter((r) => !r.resultado.erro);
+  const maxMargem = Math.max(...validos.map((r) => r.resultado.margem ?? 0), 0.0001);
+  const melhor = resultados[0];
+
+  // --- destaque do melhor canal ---
+  const h = $('heroi');
+  h.innerHTML = '';
+  const caixa = document.createElement('div');
+  if(!temDados){
+    caixa.className = 'heroi vazio';
+    const t = document.createElement('h2');
+    t.textContent = 'Preencha os dados do produto';
+    const p = document.createElement('p');
+    p.textContent = estado.modo === 'reverso'
+      ? 'Informe ao menos o custo do produto para descobrir por quanto anunciar em cada canal.'
+      : 'Informe o preço ao comprador para ver quanto sobra em cada canal.';
+    caixa.append(t, p);
+  } else if(!melhor || melhor.resultado.erro){
+    caixa.className = 'heroi vazio';
+    const t = document.createElement('h2');
+    t.textContent = melhor ? 'Nenhum canal fecha a conta' : 'Selecione ao menos um marketplace';
+    const p = document.createElement('p');
+    p.textContent = melhor ? melhor.resultado.erro : 'Escolha os canais no passo 3 para comparar.';
+    caixa.append(t, p);
+  } else {
+    const r = melhor.resultado;
+    caixa.className = 'heroi';
+    const olho = document.createElement('div'); olho.className = 'olho'; olho.textContent = '★ Melhor resultado';
+    const t = document.createElement('h2'); t.textContent = melhor.marketplace.nome + ' é o seu melhor canal';
+    const p = document.createElement('p');
+    p.textContent = (estado.ordenarPor === 'margem' ? 'Maior margem' : 'Maior lucro líquido')
+      + ' entre os canais escolhidos.';
+    const tiles = document.createElement('div'); tiles.className = 'tiles';
+    if(estado.modo === 'reverso'){
+      tiles.append(tile('Anunciar por', real(r.precoAnunciado)), tile('Fica à venda por', real(r.precoVenda)),
+        tile('Lucro líquido', real(r.lucro), true), tile('Margem', pct(r.margem), true));
+    } else {
+      tiles.append(tile('Lucro líquido', real(r.lucro), true), tile('Margem', pct(r.margem), true),
+        tile('Markup', pct(r.markup)), tile('Preço de venda', real(r.precoVenda)));
+    }
+    caixa.append(olho, t, p, tiles);
+  }
+  h.appendChild(caixa);
+
+  $('blocoComparativo').hidden = !temDados;
+  $('blocoInsights').hidden = !temDados || !validos.length;
+  $('blocoGrafico').hidden = !temDados || !validos.length;
+  if(!temDados) return;
+
+  // --- tabela ---
+  const tab = $('tabela');
+  tab.innerHTML = '';
+  const thead = document.createElement('thead');
+  const trh = document.createElement('tr');
+  const colunas = ['#', 'Marketplace'].concat(estado.modo === 'reverso'
+    ? ['Anunciar', 'À venda', 'Taxas + frete'] : ['Comissão', 'Taxa fixa', 'Frete (estimado)'])
+    .concat(['Margem', 'Lucro líquido']);
+  for(const c of colunas){ const th = document.createElement('th'); th.textContent = c; trh.appendChild(th); }
+  thead.appendChild(trh);
+  const tbody = document.createElement('tbody');
+
+  resultados.forEach(({ marketplace: mp, resultado: r }, i) => {
+    const tr = document.createElement('tr');
+    const topo = i === 0 && !r.erro;
+    if(topo) tr.className = 'topo';
+
+    const tdRank = document.createElement('td');
+    const rk = document.createElement('span'); rk.className = 'rank'; rk.textContent = i + 1;
+    tdRank.appendChild(rk);
+
+    const tdNome = document.createElement('td');
+    const ident = document.createElement('div'); ident.className = 'ident';
+    ident.append(selo(mp));
+    const nome = document.createElement('span'); nome.textContent = mp.nome;
+    if(topo){ const f = document.createElement('span'); f.className = 'bandeira'; f.textContent = 'Melhor'; nome.appendChild(f); }
+    ident.appendChild(nome);
+    tdNome.appendChild(ident);
+    tr.append(tdRank, tdNome);
+
+    if(r.erro){
+      const td = document.createElement('td');
+      td.colSpan = 5; td.className = 'erro'; td.textContent = r.erro;
+      tr.appendChild(td);
+      tbody.appendChild(tr);
+      return;
+    }
+
+    const celula = (texto, menor) => {
+      const td = document.createElement('td'); td.className = 'num'; td.textContent = texto;
+      if(menor){ const s = document.createElement('span'); s.className = 'menor'; s.textContent = ' ' + menor; td.appendChild(s); }
+      return td;
+    };
+    if(estado.modo === 'reverso'){
+      tr.append(celula(real(r.precoAnunciado)), celula(real(r.precoVenda)),
+        celula(real(r.comissaoValor + r.taxaFixaMp + r.frete)));
+    } else {
+      tr.append(celula(real(r.comissaoValor), '(' + pct(r.comissaoRate) + ')'),
+        celula(real(r.taxaFixaMp)), celula(real(r.frete)));
+    }
+
+    const faixa = faixaMargem(r.margem);
+    const tdM = document.createElement('td');
+    const val = document.createElement('span'); val.className = 'num ' + faixa; val.textContent = pct(r.margem);
+    const barra = document.createElement('span'); barra.className = 'barra';
+    const fill = document.createElement('i'); fill.className = faixa;
+    fill.style.width = Math.max(4, Math.min(100, ((r.margem ?? 0) / maxMargem) * 100)) + '%';
+    barra.appendChild(fill);
+    tdM.append(val, barra);
+
+    const tdL = document.createElement('td');
+    const b = document.createElement('b');
+    b.className = 'num ' + (r.lucro >= 0 ? 'pos' : 'neg');
+    b.textContent = real(r.lucro);
+    tdL.appendChild(b);
+
+    tr.append(tdM, tdL);
+    tbody.appendChild(tr);
+  });
+  tab.append(thead, tbody);
+
+  if(!validos.length) return;
+
+  // --- insights ---
+  const ins = $('insights');
+  ins.innerHTML = '';
+  const melhorV = validos[0], pior = validos[validos.length - 1];
+  const temComparacao = validos.length > 1;
+  const diferenca = (melhorV.resultado.lucro ?? 0) - (pior.resultado.lucro ?? 0);
+  const ganhoPct = pior.resultado.lucro > 0
+    ? Math.round(((melhorV.resultado.lucro - pior.resultado.lucro) / pior.resultado.lucro) * 100) : null;
+
+  if(temComparacao && ganhoPct != null){
+    const d = document.createElement('div');
+    d.className = 'destaqueInsight';
+    d.textContent = `${melhorV.marketplace.nome} rende um lucro ${ganhoPct}% maior que o pior canal (${pior.marketplace.nome}).`;
+    ins.appendChild(d);
+  }
+  const linhaInsight = (rotulo, item, classeLucro) => {
+    const d = document.createElement('div'); d.className = 'insight';
+    d.append(selo(item.marketplace));
+    const box = document.createElement('div');
+    const k = document.createElement('span'); k.className = 'k'; k.textContent = rotulo;
+    const b = document.createElement('b'); b.textContent = item.marketplace.nome;
+    const v1 = document.createElement('span'); v1.className = 'v ' + classeLucro;
+    v1.textContent = real(item.resultado.lucro) + ' de lucro';
+    const v2 = document.createElement('span'); v2.className = 'v ' + faixaMargem(item.resultado.margem);
+    v2.textContent = pct(item.resultado.margem) + ' de margem';
+    box.append(k, b, v1, v2);
+    d.appendChild(box);
+    return d;
+  };
+  ins.appendChild(linhaInsight('Melhor canal', melhorV, 'pos'));
+  if(temComparacao){
+    ins.appendChild(linhaInsight('Pior canal', pior, 'neg'));
+    const d = document.createElement('div'); d.className = 'insight';
+    const box = document.createElement('div');
+    const k = document.createElement('span'); k.className = 'k'; k.textContent = 'Diferença de lucro';
+    const b = document.createElement('b'); b.textContent = real(diferenca);
+    const v = document.createElement('span'); v.className = 'v'; v.textContent = 'entre o melhor e o pior canal';
+    box.append(k, b, v); d.appendChild(box);
+    ins.appendChild(d);
+  }
+
+  // --- gráfico de margem ---
+  const g = $('graficoMargem');
+  g.innerHTML = '';
+  for(const { marketplace: mp, resultado: r } of validos){
+    const faixa = faixaMargem(r.margem);
+    const col = document.createElement('div'); col.className = 'colunaG';
+    const val = document.createElement('span'); val.className = 'val ' + faixa; val.textContent = pct(r.margem);
+    const trilho = document.createElement('span'); trilho.className = 'trilho';
+    const fill = document.createElement('i'); fill.className = faixa;
+    fill.style.height = Math.max(6, Math.min(100, ((r.margem ?? 0) / maxMargem) * 100)) + '%';
+    fill.style.background = getComputedStyle(document.documentElement).getPropertyValue('--' + faixa) || '#888';
+    trilho.appendChild(fill);
+    const marca = selo(mp); marca.title = mp.nome;
+    col.append(val, trilho, marca);
+    g.appendChild(col);
+  }
+}
+
+calcular();
+</script>
+<script src="/aviso.js" defer></script>
+</body>
+</html>

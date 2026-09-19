@@ -233,10 +233,14 @@ A API escuta **só em 127.0.0.1**, de propósito. Um perfil de navegador aceita 
 ├── test*.js                 testes (npm test)
 ├── PRD-INSTALACAO.md        o que colar no Claude Code para instalar tudo
 ├── public/
-│   ├── index.html           publicar anúncio
+│   ├── inicio.html          tela inicial: vendas do dia (é o que abre em "/")
+│   ├── publicar.html        publicar anúncio
 │   ├── anuncios.html        listar, editar e analisar anúncios
+│   ├── calculadora.html     calculadora de margem multi-marketplace
+│   ├── calculo-margem.js    motor da calculadora (regras de cada marketplace)
 │   ├── navegador.html       tela remota do Chromium do scraper (login, reCAPTCHA)
 │   ├── configuracao.html    primeiro acesso: URLs, credenciais, conta, scraper
+│   ├── layout.css           menu lateral e barra de título, iguais em todas as telas
 │   └── aviso.js             aviso no topo das telas (URL mudou, falta configurar)
 └── scraper/
     ├── scrape_cli.py        scraper e CLI (Playwright + BeautifulSoup)

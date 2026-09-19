@@ -28,6 +28,10 @@ Responda em português do Brasil. Instalação do zero: siga `PRD-INSTALACAO.md`
   DNS do endereço novo vai aos servidores autoritativos — não troque por `fetch` direto
   (NXDOMAIN com TTL negativo de 30 min; ver comentário no arquivo).
 - Scraper: `scraper-processo.js` sobe e reinicia o Python; ele escuta só em `127.0.0.1`.
+- Calculadora de margem: `public/calculo-margem.js` é um porte fiel do motor da calculadora do
+  Henrique Niada (era React+Vite). Roda no navegador e no Node, como o `analise.js`, e
+  `test-calculadora.js` são os 73 testes que vieram com ele. Não mexa nas fórmulas nem nas
+  tabelas de comissão sem rodar esse teste: a tela e o teste leem o MESMO arquivo.
 
 ## Nunca
 
