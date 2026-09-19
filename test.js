@@ -19,6 +19,12 @@ assert.strictEqual(ok.price, 89.9);
 assert.strictEqual(ok.available_quantity, 3);
 assert.strictEqual(ok.currency_id, 'BRL');
 assert.strictEqual(ok.buying_mode, 'buy_it_now');
+assert.strictEqual(ok.title, 'Camiseta Preta');
+assert.strictEqual(ok.family_name, undefined, 'conta comum manda title, nunca family_name');
+// conta "User Products": o ML exige family_name e recusa title (medido com /items/validate)
+const up = buildItem(base, { userProduct: true });
+assert.strictEqual(up.family_name, 'Camiseta Preta');
+assert.ok(!('title' in up), 'com family_name, title não pode ir junto');
 assert.deepStrictEqual(ok.pictures, [{id:'ML-1'},{id:'ML-2'},{source:'https://a.com/9.jpg'}]); // ids primeiro, vazio descartado
 assert.deepStrictEqual(ok.attributes, [{id:'BRAND',value_name:'Nike'},{id:'COLOR',value_name:'Preto'}]); // vazio descartado, valor trimado
 assert.strictEqual(ok.shipping.free_shipping, true);

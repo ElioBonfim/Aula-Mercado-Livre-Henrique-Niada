@@ -355,7 +355,11 @@ const exigeItemId = (id) => {
 };
 
 // ---------- montagem do payload (lógica testável) ----------
-function buildItem(form) {
+// Conta no modelo "User Products" (tag user_product_seller): o ML EXIGE family_name e RECUSA
+// title — o título do anúncio ele monta a partir do family_name. Medido em 19/09/2026 com
+// POST /items/validate: só title -> "does not contains [family_name]"; title + family_name ->
+// "The fields [title] are invalid". Nas outras contas continua sendo title.
+function buildItem(form, { userProduct = false } = {}) {
   const errs = [];
   const title = String(form.title || '').trim();
   const price = Number(form.price);
@@ -382,7 +386,8 @@ function buildItem(form) {
   if (errs.length) throw Object.assign(new Error(errs.join(' ')), { status: 400, errors: errs });
 
   return {
-    title, category_id: form.category_id, price,
+    ...(userProduct ? { family_name: title } : { title }),
+    category_id: form.category_id, price,
     currency_id: form.currency_id || 'BRL',
     available_quantity: quantity,
     buying_mode: 'buy_it_now',
@@ -826,7 +831,9 @@ const routes = {
 
   'POST /api/items': async (_u, body) => {
     const conta = contaOuErro();
-    const payload = buildItem(body);
+    const me = await ml('/users/me').catch(() => null);
+    const userProduct = (me?.tags || []).includes('user_product_seller');
+    const payload = buildItem(body, { userProduct });
     const item = await ml('/items', { method: 'POST', body: JSON.stringify(payload) });
     const desc = String(body.description || '').trim();
     let description_ok = null;
@@ -836,7 +843,7 @@ const routes = {
         description_ok = true;
       } catch { description_ok = false; }
     }
-    D.produtoSalvar(conta.ml_user_id, item, payload);
+    D.produtoSalvar(conta.ml_user_id, item, { ...payload, title: item.title || payload.title || payload.family_name });
     return { id: item.id, permalink: item.permalink, status: item.status, description_ok, conta: conta.nickname };
   },
 };
