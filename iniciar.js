@@ -149,6 +149,9 @@ async function main() {
     salvarPids();
     const { anterior, mudou } = D.urlPublicaRegistrar(url, prov);
     log(`URL pública (${prov}): ${url}${tunel.verificado ? '' : '   [ainda não respondeu de fora]'}`);
+    if (process.env.PAINEL_ONLINE !== '0') {
+      log(`painel online (celular, outro computador): ${url}   — mesma senha`);
+    }
     const sit = await S.situacaoAtual(true).catch(() => null);
     if (sit?.estado === 'confere') {
       log('o seu aplicativo no Mercado Livre já está com esta URL. Nada a fazer.');

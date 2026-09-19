@@ -104,6 +104,7 @@
       <dt>Túnel</dt><dd id="tunelEstado">—</dd>
       <dt>Endereço público</dt><dd id="tunelUrl" class="mono">—</dd>
     </dl>
+    <p class="caixa ok" id="dicaOnline" hidden></p>
 
     <p class="sub" style="margin:18px 0 0">Cadastre estas duas URLs no seu aplicativo do DevCenter:</p>
     <label for="uCallback">URI de redirect</label>
@@ -253,7 +254,22 @@ function pintar(c){
   ultimo = c;
   const t = c.tunel || {};
   const url = t.estado === 'online' ? t.url : null;
-  $('tunelUrl').textContent = url || 'aguardando o túnel…';
+  // O endereço público é também o jeito de abrir o painel de qualquer lugar.
+  const destUrl = $('tunelUrl'); destUrl.replaceChildren();
+  if(url && c.painel_online){
+    const a = document.createElement('a');
+    a.href = url; a.target = '_blank'; a.rel = 'noopener'; a.textContent = url;
+    destUrl.append(a);
+  } else destUrl.textContent = url || 'aguardando o túnel…';
+  const dica = $('dicaOnline');
+  dica.hidden = !(url && c.painel_online);
+  if(!dica.hidden){
+    dica.replaceChildren(
+      Object.assign(document.createElement('strong'), { textContent: 'Use o painel de qualquer lugar. ' }),
+      document.createTextNode('Abra o endereço público no celular ou em outro computador e entre com a mesma senha. '
+        + 'Ele muda quando o painel é reiniciado. No computador onde o painel está instalado, '
+        + `http://localhost:${c.porta_painel} funciona sempre.`));
+  }
   $('uCallback').value = url ? url + '/callback' : 'aguardando o túnel…';
   $('uWebhook').value = url ? url + '/webhook' : 'aguardando o túnel…';
   document.querySelectorAll('[data-copiar]').forEach((b) => b.disabled = !url);

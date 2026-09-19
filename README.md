@@ -81,20 +81,20 @@ O `npm run setup` pode ser rodado quantas vezes quiser: cada passo confere antes
 ## 2. Como funciona
 
 ```
-            internet                         |                seu computador
-                                             |
-  Mercado Livre ──► https://xxxx.trycloudflare.com ──túnel──► 127.0.0.1:3101  porta PÚBLICA
-  (login e notificações)                     |                  só /callback e /webhook
-                                             |
-                                             |   navegador ──► localhost:3100  PAINEL
-                                             |                  telas, API, senha
-                                             |                        │
-                                             |                        ▼
-                                             |                127.0.0.1:8100  SCRAPER (Python)
-                                             |                  Chromium com a sua conta logada
+                 internet                       |            seu computador
+                                                |
+  Mercado Livre ────────┐                       |
+  (login, notificações) ├─► https://xxxx.trycloudflare.com ──túnel──► 127.0.0.1:3101  porta PÚBLICA
+  celular / outro PC ───┘                       |     /callback, /webhook e o painel online (com senha)
+                                                |
+                                                |   navegador ──► localhost:3100   PAINEL local
+                                                |                      │
+                                                |                      ▼
+                                                |              127.0.0.1:8100   SCRAPER (Python)
+                                                |              Chromium com a sua conta logada
 ```
 
-- **Dois servidores no mesmo processo.** O painel escuta só em `127.0.0.1`. O túnel aponta para a **porta pública**, que responde apenas `/callback` (retorno do login) e `/webhook` (notificações); qualquer outro caminho dá `404`. Quem acha a URL do túnel não chega nas telas, na API nem no scraper — por construção, não por senha.
+- **Painel no computador e online.** No computador, `http://localhost:3100`. De qualquer lugar (celular, outro computador), pelo **endereço público** do túnel, com a mesma senha — ele aparece em **Configurações** e no terminal. Pela internet a senha **nunca é criada** (só no computador, para ninguém que ache a URL tomar o painel), o login tem limite de tentativas e o cookie é `Secure`. Quem preferir o painel só local: `PAINEL_ONLINE=0` no `.env` deixa o endereço público apenas com `/callback` (retorno do login) e `/webhook` (notificações).
 - **O scraper sobe junto e volta sozinho.** Se o processo Python cair ou travar, o `npm start` reinicia com espera crescente (2 s, 5 s, 15 s…). O estado aparece em **Configurações**.
 - **Portas ocupadas não travam.** Se a 3100 já estiver em uso por outro programa, o painel usa a próxima livre e avisa. Se o próprio painel já estiver rodando, um segundo `npm start` só abre o navegador nele.
 - **Nada fica para trás.** `Ctrl+C` encerra túnel e scraper. Se o terminal morrer sem encerrar, o próximo `npm start` acha os processos órfãos (conferindo a linha de comando antes) e os encerra.
@@ -242,7 +242,7 @@ Nunca entram no git (já no `.gitignore`): `.env`, `dados.sqlite*`, `logs/`, `no
 
 ### 7.1 Painel (`localhost:3100`)
 
-Só atende pedidos com `Host` local. Tudo, menos `/primeiro-acesso`, `/login` e `/api/ping`, exige a sessão.
+Na porta local, só atende pedidos com `Host` local; pela internet, ver 7.2. Tudo, menos `/primeiro-acesso`, `/login` e `/api/ping`, exige a sessão.
 
 | Método | Rota | O que faz |
 |---|---|---|
@@ -290,9 +290,9 @@ Só atende pedidos com `Host` local. Tudo, menos `/primeiro-acesso`, `/login` e 
 | GET | `/callback` | retorno do OAuth; valida o `state` (uso único, 15 min) e grava a conta |
 | GET/POST | `/webhook` | notificações do ML (sempre 200: erro faz o ML desativar a URL) |
 | GET | `/saude` | autoteste do túnel |
-| GET | `/` | página explicando o que é o endereço |
+| — | todo o resto | o **painel online** (mesmas rotas da 7.1), com as regras abaixo |
 
-Qualquer outro caminho: `404`.
+Regras do painel online: sem senha criada, qualquer página responde `403` mandando criar no computador; `POST` só vale com `Origin` igual ao endereço público; login com 5 erros bloqueia o IP por 15 min e 30 erros somados fecham o login online por 15 min (o do computador continua funcionando); cookie `Secure`. Com `PAINEL_ONLINE=0`, o resto dá `404` e `/` mostra uma página explicando o endereço.
 
 ### 7.3 Scraper (`127.0.0.1:8100`)
 
@@ -589,7 +589,7 @@ npm test
 | `test.js` | montagem do payload de publicação e de edição |
 | `test-db.js` | cifra, multi-conta, isolamento, senha (scrypt), sessões, histórico de URLs |
 | `test-config.js` | a regra do aviso "a URL mudou": confere, mudou, barra no fim, fluxos, plano B |
-| `test-servidor.js` | sobe os dois servidores e prova as fronteiras: porta pública só com `/callback` e `/webhook`, painel só local, site de fora não cria a senha, `state` do OAuth de uso único, sessão revogável, sem escapar de `public/` |
+| `test-servidor.js` | sobe os dois servidores e prova as fronteiras: senha nunca criada pela internet, limite de tentativas (por IP e somado), cookie `Secure` online, `PAINEL_ONLINE=0`, porta local só para localhost, site de fora não cria a senha, `state` do OAuth de uso único, sessão revogável, sem escapar de `public/` |
 
 Todos usam banco temporário: rodar teste não toca no seu `dados.sqlite`. O scraper tem os dele:
 
@@ -654,7 +654,7 @@ node -e "require('./ambiente').carregar();require('./db').db.prepare(\"DELETE FR
 
 ## 13. Segurança
 
-- **O painel nunca fica exposto.** Ele escuta só em `127.0.0.1`; o túnel publica uma segunda porta que só tem `/callback` e `/webhook`. Os testes provam que painel, API e login dão `404` por ali.
+- **Painel online com senha, e a senha só nasce no computador.** Pelo endereço público o painel exige a sessão; sem senha criada, ele só manda criar no computador — quem descobrir a URL antes do aluno não toma o painel. Login online: 5 erros bloqueiam o IP por 15 min; 30 erros somados (troca de IP) fecham o login online por 15 min, sem afetar o login no computador. Cookie `HttpOnly`, `SameSite=Lax` e `Secure`. Use uma senha forte: ela é a única barreira pela internet. Para não expor o painel, `PAINEL_ONLINE=0`.
 - **Só quem está no computador cria a senha.** O painel recusa `Host` que não seja local (barra *DNS rebinding*) e `POST` cuja origem seja outro site — então uma página aberta no navegador não consegue criar a senha antes de você no primeiro acesso.
 - **O `state` do OAuth fica no servidor**, é de uso único e vence em 15 minutos. Com PKCE quando o app exige.
 - **Segredos nunca em texto puro:** chave secreta e tokens cifrados no banco; senha como hash `scrypt`; sessão guardada só como hash. `.env`, `dados.sqlite*`, `logs/` e `scraper/.sessao_ml/` estão no `.gitignore`.

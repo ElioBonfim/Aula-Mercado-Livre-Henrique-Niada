@@ -12,9 +12,11 @@ Responda em português do Brasil. Instalação do zero: siga `PRD-INSTALACAO.md`
 
 ## Arquitetura (leia antes de mexer)
 
-- `server.js` sobe **dois** servidores: o painel (só `127.0.0.1`, exige Host local e sessão)
-  e a porta pública (`/callback`, `/webhook`, `/saude`), que é a única coisa que o túnel
-  publica. Não coloque rota nova na porta pública sem necessidade real.
+- `server.js` sobe **dois** servidores: o painel local (só `127.0.0.1`, exige Host local) e a
+  porta pública, que o túnel publica: `/callback`, `/webhook`, `/saude` e, com `PAINEL_ONLINE`
+  (padrão), o painel online (`tratarPainel(req, res, true)`). Online: a senha nunca é criada
+  (só no computador), login com limite de tentativas, POST só com Origin do endereço público,
+  cookie Secure. Rota nova de API herda essas regras; não crie atalho que as contorne.
 - Senha do painel, App ID e chave secreta ficam no SQLite (tabela `estado`), não no `.env`.
   O `.env` é criado sozinho e guarda só a `ML_DB_KEY` e portas.
 - A URL do túnel muda a cada reinício; `app-ml.js#situacao` compara com o cadastro real do
@@ -30,4 +32,4 @@ Responda em português do Brasil. Instalação do zero: siga `PRD-INSTALACAO.md`
 - Pedir App ID, chave secreta ou senha no chat: eles são digitados no painel.
 - Usar `Referrer-Policy: no-referrer` no painel: o navegador passa a mandar `Origin: null`
   no POST do login e a checagem de origem recusa o próprio usuário.
-- Expor a porta do scraper ou do painel pelo túnel.
+- Expor a porta do scraper pelo túnel, ou deixar o primeiro acesso (criar senha) alcançável online.

@@ -4,9 +4,12 @@
 // chegam ao browser.
 //
 // DOIS servidores no mesmo processo:
-//   painel  (127.0.0.1:PORT, padrão 3100)          telas, API, login. Só este computador.
-//   público (127.0.0.1:PORTA_PUBLICA, padrão 3101) só /callback e /webhook. É o que o
-//           túnel publica na internet: o painel não fica alcançável de fora por construção.
+//   painel  (127.0.0.1:PORT, padrão 3100)          o painel para quem está neste computador.
+//   público (127.0.0.1:PORTA_PUBLICA, padrão 3101) o que o túnel publica na internet:
+//           /callback e /webhook do Mercado Livre e, com PAINEL_ONLINE (padrão), o próprio
+//           painel — para o aluno usar do celular ou de outro computador. Por ali a senha
+//           nunca é CRIADA (só no computador), o login tem limite de tentativas e o cookie
+//           é Secure. PAINEL_ONLINE=0 no .env deixa a porta pública só com /callback e /webhook.
 if (require.main === module) require('./ambiente.js').carregar(); // antes do db.js ler a chave
 const http = require('node:http');
 const fs = require('node:fs');
@@ -39,6 +42,9 @@ function credenciais() {
   };
 }
 const urlPublica = () => { const t = servicos.tunel(); return t?.estado === 'online' ? t.url : null; };
+const painelOnline = () => process.env.PAINEL_ONLINE !== '0';
+// A porta em que o painel REALMENTE subiu (a 3100 pode estar ocupada e ele ir para outra).
+let portaPainel = PORT;
 
 // ---------- acesso ao painel ----------
 // Este servidor publica e EDITA anúncios de contas reais. A senha é criada pelo aluno no
@@ -47,8 +53,9 @@ const COOKIE = 'aula_ml_sess';
 const tokenDoCookie = (req) =>
   new RegExp(`(?:^|;\\s*)${COOKIE}=([a-f0-9]{64})`).exec(req.headers.cookie || '')?.[1] || null;
 const autorizado = (req) => D.sessaoValida(tokenDoCookie(req));
-const cookieSessao = (token, maxAge = 604800) =>
-  `${COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}`;
+// Secure quando o pedido veio pela internet (HTTPS do túnel); localhost é http puro.
+const cookieSessao = (token, maxAge = 604800, online = false) =>
+  `${COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${online ? '; Secure' : ''}`;
 
 // O painel só atende quem está NESTE computador. Host fora da lista barra DNS rebinding;
 // Origin fora da lista barra um site aberto no navegador que tente postar em localhost
@@ -63,6 +70,40 @@ function pedidoLocal(req) {
   // navegador. Sec-Fetch-Site é escrito pelo navegador, não pela página: desempata.
   if (origem === 'null') return ['same-origin', 'none'].includes(req.headers['sec-fetch-site']);
   try { return HOST_LOCAL.test(new URL(origem).host); } catch { return false; }
+}
+
+// Pela internet: POST só vale se veio de uma página do próprio endereço público. Compara
+// com a URL do túnel, e não com o Host, porque o localtunnel reescreve o Host para 127.0.0.1.
+function pedidoOnline(req) {
+  if (req.method === 'GET' || req.method === 'HEAD') return true;
+  const origem = req.headers.origin;
+  if (!origem) return false; // navegador sempre manda; sem ele não é uma pessoa no painel
+  if (origem === 'null') return req.headers['sec-fetch-site'] === 'same-origin';
+  const pub = urlPublica();
+  try { return !!pub && new URL(origem).origin === new URL(pub).origin; } catch { return false; }
+}
+
+// Quem está do outro lado do túnel. O cloudflared manda Cf-Connecting-Ip; o localtunnel,
+// X-Forwarded-For. Pedido local não passa por aqui.
+const ipDoCliente = (req) => String(req.headers['cf-connecting-ip']
+  || String(req.headers['x-forwarded-for'] || '').split(',')[0] || req.socket.remoteAddress || '?').trim();
+
+// Limite de tentativas de senha: 5 erros por IP em 15 min bloqueiam aquele IP por 15 min;
+// 30 erros somados pela internet bloqueiam o login online inteiro (troca de IP não adianta).
+// O login no próprio computador nunca é bloqueado pelo que acontece lá fora.
+const JANELA_SENHA_MS = 15 * 60 * 1000;
+const LIMITES_SENHA = { ip: 5, online: 30 };
+const tentativas = new Map();
+function minutosBloqueado(chave) {
+  const t = tentativas.get(chave);
+  return t && t.ate > Date.now() ? Math.ceil((t.ate - Date.now()) / 60000) : 0;
+}
+function contarErro(chave, limite) {
+  const agora = Date.now();
+  for (const [k, v] of tentativas) if (agora - v.desde > JANELA_SENHA_MS && v.ate < agora) tentativas.delete(k);
+  const t = tentativas.get(chave) || { erros: 0, desde: agora, ate: 0 };
+  if (++t.erros >= limite) t.ate = agora + JANELA_SENHA_MS;
+  tentativas.set(chave, t);
 }
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) =>
@@ -114,14 +155,21 @@ const PAGINA_PRIMEIRO_ACESSO = (erro) => pagina('Primeiro acesso', `${PASSOS(0)}
 ${erro ? `<p class="erro" id="e1" role="alert">${esc(erro)}</p>` : ''}
 <button>Criar senha e continuar</button></form>`, erro ? 400 : 200);
 
-const PAGINA_LOGIN = (erro) => pagina('Entrar', `<h1>Painel Mercado Livre</h1>
+// erro: texto da mensagem; codigo: 401 senha errada, 429 bloqueado por tentativas.
+const PAGINA_LOGIN = (erro, codigo = 401) => pagina('Entrar', `<h1>Painel Mercado Livre</h1>
 <p>Digite a senha que você criou no primeiro acesso.</p>
 <form method="POST" action="/login">
 <label for="s">Senha</label>
 <input id="s" name="senha" type="password" autofocus required autocomplete="current-password"
  ${erro ? 'aria-describedby="e1"' : ''}>
-${erro ? '<p class="erro" id="e1" role="alert">Senha incorreta.</p>' : ''}
-<button>Entrar</button></form>`, erro ? 401 : 200);
+${erro ? `<p class="erro" id="e1" role="alert">${esc(erro)}</p>` : ''}
+<button>Entrar</button></form>`, erro ? codigo : 200);
+
+// Pela internet, antes de existir senha: quem achasse a URL criaria a senha no lugar do aluno.
+const PAGINA_SO_NO_COMPUTADOR = () => pagina('Primeiro acesso', `${PASSOS(0)}
+<h1>Crie a senha no computador do painel</h1>
+<p>Por segurança, a senha é criada só no computador onde o painel foi instalado. Nele, abra
+<code>http://localhost:${portaPainel}</code>, crie a senha e depois volte a este endereço.</p>`, 403);
 
 // ---------- tokens ----------
 async function renovar(conta) {
@@ -516,6 +564,8 @@ const routes = {
       historico_urls: D.urlsPublicasHistorico(5),
       scraper: servicos.scraper(),
       scraper_gerenciado: !!servicos.reiniciarScraper,
+      painel_online: painelOnline(),
+      porta_painel: portaPainel,
     };
   },
 
@@ -996,10 +1046,13 @@ async function tratarPublico(req, res) {
 
   if (url.pathname === '/callback' && req.method === 'GET') return callbackOAuth(req, res, url);
 
+  // O painel inteiro, pela internet, com as regras de "online" (ver tratarPainel).
+  if (painelOnline()) return tratarPainel(req, res, true);
+
   if (url.pathname === '/' && req.method === 'GET') {
     return enviarHtml(res, pagina('Endereço de retorno', `<h1>Este endereço só recebe o retorno do Mercado Livre</h1>
 <p>Chegam aqui o login da conta (<code>/callback</code>) e as notificações (<code>/webhook</code>).
-O painel roda no computador de quem o instalou, em <code>http://localhost:${PORT}</code>.</p>`));
+O painel roda no computador de quem o instalou, em <code>http://localhost:${portaPainel}</code>.</p>`));
   }
   return send(404, { error: 'not found' });
 }
@@ -1008,7 +1061,7 @@ O painel roda no computador de quem o instalou, em <code>http://localhost:${PORT
 // quem prova que o pedido nasceu aqui é o state guardado no servidor pelo /auth.
 async function callbackOAuth(req, res, url) {
   const st = consumirEstadoOAuth(url.searchParams.get('state') || '');
-  const voltar = st?.origem || `http://localhost:${PORT}`;
+  const voltar = st?.origem || `http://localhost:${portaPainel}`;
   const falha = (titulo, detalhe, code = 400) => enviarHtml(res, pagina(titulo, `<h1>${esc(titulo)}</h1>
 <pre>${esc(detalhe)}</pre><p><a href="${esc(voltar)}/configuracao.html">Voltar ao painel</a></p>`, code));
 
@@ -1055,20 +1108,25 @@ const TIPOS = {
   '.ico': 'image/x-icon', '.json': 'application/json; charset=utf-8',
 };
 
-async function tratarPainel(req, res) {
-  if (!pedidoLocal(req)) {
-    return enviarJson(res, 403, { error: 'O painel só atende quem está neste computador (localhost).' });
+// online = o pedido chegou pela internet (porta pública, via túnel), não deste computador.
+async function tratarPainel(req, res, online = false) {
+  if (online ? !pedidoOnline(req) : !pedidoLocal(req)) {
+    return enviarJson(res, 403, { error: online
+      ? 'Pedido recusado: ele não veio de uma página do próprio painel.'
+      : 'O painel só atende quem está neste computador (localhost).' });
   }
-  const url = new URL(req.url, `http://${req.headers.host}`);
+  const url = new URL(req.url, online ? 'https://painel' : `http://${req.headers.host}`);
   const send = (code, obj) => enviarJson(res, code, obj);
 
   // O iniciar.js usa para não subir duas cópias. Não revela nada.
   if (url.pathname === '/api/ping') return send(200, { ok: true, app: 'aula-ml' });
 
-  // Primeiro acesso: o aluno cria a própria senha. Some depois que ela existe.
+  // Primeiro acesso: o aluno cria a própria senha. Some depois que ela existe. Pela internet
+  // ela NUNCA é criada: quem achasse a URL antes do aluno ficaria com o painel.
   const temSenha = D.senhaDefinida();
   if (url.pathname === '/primeiro-acesso') {
     if (temSenha) return redirecionar(res, '/login');
+    if (online) return enviarHtml(res, PAGINA_SO_NO_COMPUTADOR());
     if (req.method === 'POST') {
       const f = new URLSearchParams(await lerCorpo(req, 4096));
       const senha = f.get('senha') || '';
@@ -1081,21 +1139,31 @@ async function tratarPainel(req, res) {
   }
   if (!temSenha) {
     if (url.pathname.startsWith('/api/')) return send(401, { error: 'Crie a senha do painel primeiro.', primeiro_acesso: true });
-    return redirecionar(res, '/primeiro-acesso');
+    return online ? enviarHtml(res, PAGINA_SO_NO_COMPUTADOR()) : redirecionar(res, '/primeiro-acesso');
   }
 
   if (url.pathname === '/login') {
     if (req.method === 'POST') {
+      const chaveIp = `ip:${ipDoCliente(req)}`;
+      const espera = online ? Math.max(minutosBloqueado(chaveIp), minutosBloqueado('online')) : 0;
+      if (espera) {
+        return enviarHtml(res, PAGINA_LOGIN(`Muitas tentativas erradas. Tente de novo em ${espera} min `
+          + '(ou entre pelo computador onde o painel está instalado).', 429));
+      }
       const enviada = new URLSearchParams(await lerCorpo(req, 4096)).get('senha') || '';
-      if (!D.senhaConfere(enviada)) return enviarHtml(res, PAGINA_LOGIN(true));
+      if (!D.senhaConfere(enviada)) {
+        if (online) { contarErro(chaveIp, LIMITES_SENHA.ip); contarErro('online', LIMITES_SENHA.online); }
+        return enviarHtml(res, PAGINA_LOGIN('Senha incorreta.'));
+      }
+      if (online) tentativas.delete(chaveIp);
       const destino = D.contasListar().length ? '/' : '/configuracao.html';
-      return redirecionar(res, destino, { 'Set-Cookie': cookieSessao(D.sessaoCriar()) });
+      return redirecionar(res, destino, { 'Set-Cookie': cookieSessao(D.sessaoCriar(), undefined, online) });
     }
-    return enviarHtml(res, PAGINA_LOGIN(false));
+    return enviarHtml(res, PAGINA_LOGIN());
   }
   if (url.pathname === '/sair' && req.method === 'POST') {
     D.sessaoEncerrar(tokenDoCookie(req));
-    return redirecionar(res, '/login', { 'Set-Cookie': cookieSessao('', 0) });
+    return redirecionar(res, '/login', { 'Set-Cookie': cookieSessao('', 0, online) });
   }
 
   if (!autorizado(req)) {
@@ -1158,7 +1226,9 @@ async function tratarPainel(req, res) {
         + '&code_challenge_method=S256';
     }
     const redirect = `${base}/callback`;
-    const state = novoEstadoOAuth({ redirect, verifier, origem: `http://${req.headers.host}` });
+    // Volta para onde o aluno estava: o endereço público (celular) ou o localhost.
+    const origem = online ? new URL(base).origin : `http://${req.headers.host}`;
+    const state = novoEstadoOAuth({ redirect, verifier, origem });
     return redirecionar(res, 'https://auth.mercadolivre.com.br/authorization?response_type=code'
       + `&client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(redirect)}`
       + `&state=${state}${desafio}`);
@@ -1204,18 +1274,22 @@ function iniciar({ porta = PORT, portaPublica = PORTA_PUBLICA, servicos: extra }
     srv.once('error', falhou);
     srv.listen(p, '127.0.0.1', () => ok());
   });
-  return Promise.all([ouvir(painel, porta), ouvir(publico, portaPublica)]).then(() => ({
-    painel, publico, porta: painel.address().port, portaPublica: publico.address().port,
-    fechar: () => Promise.all([painel, publico].map((s) => new Promise((ok) => {
-      s.close(() => ok()); s.closeAllConnections?.();
-    }))),
-  }));
+  return Promise.all([ouvir(painel, porta), ouvir(publico, portaPublica)]).then(() => {
+    portaPainel = painel.address().port;
+    return {
+      painel, publico, porta: portaPainel, portaPublica: publico.address().port,
+      fechar: () => Promise.all([painel, publico].map((s) => new Promise((ok) => {
+        s.close(() => ok()); s.closeAllConnections?.();
+      }))),
+    };
+  });
 }
 
 if (require.main === module) {
   iniciar().then(({ porta, portaPublica }) => {
     console.log(`→ painel  http://localhost:${porta}   (banco: ${D.DB_FILE})`);
-    console.log(`→ público http://127.0.0.1:${portaPublica}   (só /callback e /webhook: aponte o túnel para cá)`);
+    console.log(`→ público http://127.0.0.1:${portaPublica}   (aponte o túnel para cá: /callback, /webhook`
+      + `${painelOnline() ? ' e o painel online' : ''})`);
     console.log('  Dica: "npm start" sobe também o túnel e o scraper.');
   }).catch((e) => { console.error(`Não subiu: ${e.message}`); process.exit(1); });
 }

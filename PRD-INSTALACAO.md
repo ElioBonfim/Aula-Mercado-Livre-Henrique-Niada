@@ -123,6 +123,11 @@ Mostre ao aluno as duas URLs do quadro e guie, uma etapa por vez:
 **Pronto quando:** a tela Configurações mostra o passo 3 concluído (conta listada) e o
 scraper como **rodando**.
 
+**Usar de qualquer lugar:** mostre ao aluno o **Endereço público** da tela Configurações (é a
+mesma URL do túnel). Aberto no celular ou em outro computador, ele pede a mesma senha. Avise
+que esse endereço muda quando o painel é reiniciado, e que a senha só pode ser criada no
+computador onde o painel está instalado.
+
 ## Se algo der errado
 
 | Sintoma | O que fazer |
