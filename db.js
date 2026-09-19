@@ -275,6 +275,141 @@ const posicoesHistorico = (itemId, termo, limite = 30) =>
   db.prepare(`SELECT medida_em, posicao FROM posicoes WHERE item_id=? AND termo=? AND versao=?
               ORDER BY id DESC LIMIT ?`).all(itemId, termo, VERSAO_POSICAO, limite).reverse();
 
+// ---------- custos, vendas e frete (lucro real) ----------
+// custos: o que só o vendedor sabe (quanto pagou no produto). Por unidade.
+// vendas: cópia local das linhas de pedido. Uma conta real tinha 11 mil pedidos em 150 dias;
+//   buscar tudo a cada tela custaria ~220 chamadas ao ML. Aqui o período vira SQL.
+// fretes: o custo de envio que o ML cobrou do vendedor, por envio. Não muda depois do
+//   envio, então fica guardado e cada envio é consultado uma vez só.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS custos (
+    item_id       TEXT PRIMARY KEY,
+    ml_user_id    INTEGER NOT NULL,
+    custo         REAL,
+    outros        REAL,
+    atualizado_em TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS vendas (
+    order_id    INTEGER NOT NULL,
+    item_id     TEXT NOT NULL,
+    variacao    INTEGER NOT NULL DEFAULT 0,
+    ml_user_id  INTEGER NOT NULL,
+    data        TEXT NOT NULL,
+    status      TEXT,
+    quantidade  INTEGER NOT NULL,
+    preco_unit  REAL NOT NULL,
+    tarifa_unit REAL,
+    envio_id    INTEGER,
+    PRIMARY KEY (order_id, item_id, variacao)
+  );
+  CREATE INDEX IF NOT EXISTS idx_vendas_conta_data ON vendas(ml_user_id, data);
+  CREATE INDEX IF NOT EXISTS idx_vendas_item_data ON vendas(item_id, data);
+  CREATE TABLE IF NOT EXISTS fretes (
+    envio_id   INTEGER PRIMARY KEY,
+    ml_user_id INTEGER NOT NULL,
+    custo      REAL NOT NULL,
+    medido_em  TEXT NOT NULL
+  );
+`);
+
+function custoGravar(mlUserId, itemId, { custo, outros }) {
+  db.prepare(`INSERT INTO custos (item_id, ml_user_id, custo, outros, atualizado_em) VALUES (?,?,?,?,?)
+              ON CONFLICT(item_id) DO UPDATE SET custo=excluded.custo, outros=excluded.outros,
+                                                 atualizado_em=excluded.atualizado_em`)
+    .run(itemId, mlUserId, custo ?? null, outros ?? null, agora());
+}
+const custoObter = (itemId) =>
+  db.prepare('SELECT custo, outros, atualizado_em FROM custos WHERE item_id=?').get(itemId) ?? null;
+function custosDe(ids) {
+  if (!ids.length) return {};
+  return Object.fromEntries(db.prepare(`SELECT item_id, custo, outros FROM custos
+                                        WHERE item_id IN (${ids.map(() => '?').join(',')})`)
+    .all(...ids).map((r) => [r.item_id, { custo: r.custo, outros: r.outros }]));
+}
+
+// Imposto é da empresa (Simples, Lucro Presumido…), não do anúncio: um valor por conta.
+const impostoLer = (mlUserId) => {
+  const v = configLer(`imposto_pct:${mlUserId}`);
+  return v == null ? null : Number(v);
+};
+const impostoGravar = (mlUserId, pct) => configGravar(`imposto_pct:${mlUserId}`, pct == null ? null : String(pct));
+
+// Pedido cancelado ou inválido não é venda; "confirmed" ainda não foi pago (e é também
+// como a API mostra a venda que o vendedor marcou como não concretizada).
+const STATUS_VENDA = ['paid', 'partially_refunded'];
+const EM_VENDA = `status IN (${STATUS_VENDA.map((s) => `'${s}'`).join(',')})`;
+
+function vendasGravar(linhas) {
+  const st = db.prepare(`INSERT INTO vendas (order_id, item_id, variacao, ml_user_id, data, status,
+                                             quantidade, preco_unit, tarifa_unit, envio_id)
+                         VALUES (?,?,?,?,?,?,?,?,?,?)
+                         ON CONFLICT(order_id, item_id, variacao) DO UPDATE SET
+                           status=excluded.status, quantidade=excluded.quantidade,
+                           preco_unit=excluded.preco_unit, tarifa_unit=excluded.tarifa_unit,
+                           envio_id=excluded.envio_id`);
+  db.exec('BEGIN');
+  try {
+    for (const l of linhas) {
+      st.run(l.order_id, l.item_id, l.variacao || 0, l.ml_user_id, l.data, l.status ?? null,
+        l.quantidade, l.preco_unit, l.tarifa_unit ?? null, l.envio_id ?? null);
+    }
+    db.exec('COMMIT');
+  } catch (e) { db.exec('ROLLBACK'); throw e; }
+}
+
+// Um resumo por anúncio da conta na janela j = { de, meio, ate } (ISO, ate exclusivo).
+// `meio` separa as duas metades para a tendência — a mesma conta que ordena "maiores
+// quedas" e pinta o selo na listagem.
+const vendasResumo = (mlUserId, j) =>
+  db.prepare(`SELECT item_id,
+                     SUM(quantidade) AS unidades,
+                     COUNT(DISTINCT order_id) AS pedidos,
+                     SUM(quantidade * preco_unit) AS faturamento,
+                     SUM(quantidade * COALESCE(tarifa_unit, 0)) AS tarifas,
+                     COUNT(DISTINCT envio_id) AS envios,
+                     SUM(CASE WHEN data < ? THEN quantidade ELSE 0 END) AS antes,
+                     SUM(CASE WHEN data >= ? THEN quantidade ELSE 0 END) AS depois
+              FROM vendas WHERE ml_user_id=? AND data >= ? AND data < ? AND ${EM_VENDA}
+              GROUP BY item_id`).all(j.meio, j.meio, mlUserId, j.de, j.ate);
+
+// Unidades por linha de pedido, para montar a série diária de alguns anúncios.
+function vendasDiarias(ids, j) {
+  if (!ids.length) return [];
+  return db.prepare(`SELECT item_id, data, quantidade FROM vendas
+                     WHERE item_id IN (${ids.map(() => '?').join(',')}) AND data >= ? AND data < ?
+                       AND ${EM_VENDA}`)
+    .all(...ids, j.de, j.ate);
+}
+
+const vendasUltimas = (itemId, limite = 5) =>
+  db.prepare(`SELECT order_id, data, status, SUM(quantidade) AS quantidade,
+                     SUM(quantidade * preco_unit) AS total
+              FROM vendas WHERE item_id=? GROUP BY order_id ORDER BY data DESC LIMIT ?`).all(itemId, limite);
+
+// Envios recentes do anúncio cujo frete ainda não foi consultado.
+const enviosSemFrete = (itemId, j, limite) =>
+  db.prepare(`SELECT v.envio_id, MAX(v.data) AS data FROM vendas v
+              LEFT JOIN fretes f ON f.envio_id = v.envio_id
+              WHERE v.item_id=? AND v.data >= ? AND v.data < ? AND v.envio_id IS NOT NULL
+                AND f.envio_id IS NULL AND v.${EM_VENDA}
+              GROUP BY v.envio_id ORDER BY data DESC LIMIT ?`).all(itemId, j.de, j.ate, limite).map((r) => r.envio_id);
+
+// Frete por UNIDADE nos envios do anúncio já consultados na janela: soma do frete ÷ soma
+// das unidades. Medido numa conta real: o frete por envio ia de R$ 0 a R$ 253 conforme a
+// quantidade no pedido (média de 7 un.) — a média por envio errava; por unidade, não.
+const fretePorUnidade = (itemId, j) =>
+  db.prepare(`SELECT SUM(f.custo) AS custo, SUM(u.qtd) AS unidades, COUNT(*) AS amostra
+              FROM fretes f
+              JOIN (SELECT envio_id, SUM(quantidade) AS qtd FROM vendas
+                    WHERE item_id=? AND data >= ? AND data < ? AND envio_id IS NOT NULL AND ${EM_VENDA}
+                    GROUP BY envio_id) u ON u.envio_id = f.envio_id`)
+    .get(itemId, j.de, j.ate);
+
+const freteGravar = (mlUserId, envioId, custo) =>
+  db.prepare(`INSERT INTO fretes (envio_id, ml_user_id, custo, medido_em) VALUES (?,?,?,?)
+              ON CONFLICT(envio_id) DO UPDATE SET custo=excluded.custo, medido_em=excluded.medido_em`)
+    .run(envioId, mlUserId, custo, agora());
+
 // ---------- configuração do painel (primeiro acesso) ----------
 // O que antes vivia no .env e o aluno teria de editar à mão: senha do painel, App ID e
 // chave secreta do DevCenter. Mora na tabela estado; o que é segredo vai cifrado.
@@ -376,4 +511,6 @@ module.exports = {
   contaAtiva, contaAtivaId, contaAtivaDefinir, contaRemover,
   produtoSalvar, produtoSincronizar, produtosListar,
   palavraAdicionar, palavraRemover, palavrasListar, posicaoSalvar, posicoesHistorico, notificacaoSalvar, notificacoesListar,
+  custoGravar, custoObter, custosDe, impostoLer, impostoGravar, STATUS_VENDA,
+  vendasGravar, vendasResumo, vendasDiarias, vendasUltimas, enviosSemFrete, fretePorUnidade, freteGravar,
 };

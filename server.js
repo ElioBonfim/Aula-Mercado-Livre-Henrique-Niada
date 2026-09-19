@@ -18,6 +18,7 @@ const crypto = require('node:crypto');
 const { URL } = require('node:url');
 const D = require('./db.js');
 const APP = require('./app-ml.js');
+const A = require('./public/analise.js'); // o mesmo arquivo que a tela usa
 
 const PORT = Number(process.env.PORT) || 3100;
 const PORTA_PUBLICA = Number(process.env.PORTA_PUBLICA) || 3101;
@@ -650,6 +651,163 @@ function tabelaSimples(ch, site) {
   };
 }
 
+// ---------- vendas do período (cópia local dos pedidos) ----------
+// Medido em 19/09/2026 numa conta com 11 mil pedidos em 150 dias:
+//   - /orders/search aceita limit até 51 e recusa offset+limit acima de 10000 (400):
+//     janela com mais pedidos que isso é fatiada ao meio por data;
+//   - order_items[].sale_fee é a tarifa POR UNIDADE (3 un. a R$ 31,47 -> sale_fee 3,62,
+//     o mesmo que /listing_prices dá para uma unidade).
+// A primeira abertura de uma janela baixa os pedidos dela; depois, só o que mudou desde a
+// última vez (order.date_last_updated.from), o que também pega cancelamento de venda antiga.
+const POR_PAGINA = 51, TETO_OFFSET = 10000;
+const isoML = (d) => new Date(d).toISOString().replace('Z', '-00:00');
+const SYNC_FRESCO_MS = 60e3;
+
+async function emLotes(lista, simultaneos, fn) {
+  const out = new Array(lista.length);
+  let i = 0;
+  await Promise.all(Array.from({ length: Math.min(simultaneos, lista.length) }, async () => {
+    while (i < lista.length) { const k = i++; out[k] = await fn(lista[k], k); }
+  }));
+  return out;
+}
+
+// 429 em rajada de páginas: espera um pouco e tenta de novo, em vez de perder a sincronização.
+async function mlPaciente(caminho, contaId) {
+  for (let tentativa = 0; ; tentativa++) {
+    try { return await ml(caminho, {}, contaId); }
+    catch (e) {
+      if (e.status !== 429 || tentativa >= 3) throw e;
+      await new Promise((ok) => setTimeout(ok, 800 * (tentativa + 1)));
+    }
+  }
+}
+
+const linhasDoPedido = (o, contaId) => (o.order_items || []).filter((oi) => oi.item?.id).map((oi) => ({
+  order_id: o.id, item_id: oi.item.id, variacao: oi.item.variation_id || 0, ml_user_id: contaId,
+  data: new Date(o.date_created).toISOString(), status: o.status, quantidade: oi.quantity || 0,
+  preco_unit: oi.unit_price ?? 0, tarifa_unit: oi.sale_fee ?? null, envio_id: o.shipping?.id ?? null,
+}));
+
+// Baixa os pedidos com `campo` (date_created ou date_last_updated) entre de e ate.
+async function baixarPedidos(contaId, campo, de, ate) {
+  const base = `/orders/search?seller=${contaId}&order.${campo}.from=${isoML(de)}`
+    + `&order.${campo}.to=${isoML(ate)}&sort=date_asc&limit=${POR_PAGINA}`;
+  const p1 = await mlPaciente(base, contaId);
+  const total = p1.paging?.total ?? 0;
+  if (total > TETO_OFFSET - 100 && ate - de > 3600e3) {
+    const meio = new Date((de.getTime() + ate.getTime()) / 2);
+    return (await baixarPedidos(contaId, campo, de, meio)).concat(await baixarPedidos(contaId, campo, meio, ate));
+  }
+  const offsets = [];
+  for (let off = POR_PAGINA; off < total && off + POR_PAGINA <= TETO_OFFSET; off += POR_PAGINA) offsets.push(off);
+  const paginas = await emLotes(offsets, 6, (off) => mlPaciente(`${base}&offset=${off}`, contaId));
+  return [p1, ...paginas].flatMap((p) => p.results || []);
+}
+
+// Uma sincronização por vez em cada conta: duas abas abertas não baixam tudo em dobro.
+const syncEmCurso = new Map();
+function sincronizarVendas(conta, dias) {
+  const id = conta.ml_user_id;
+  const anterior = syncEmCurso.get(id) || Promise.resolve();
+  const atual = anterior.catch(() => {}).then(() => sincronizar(id, dias));
+  syncEmCurso.set(id, atual);
+  atual.finally(() => { if (syncEmCurso.get(id) === atual) syncEmCurso.delete(id); }).catch(() => {});
+  return atual;
+}
+
+async function sincronizar(contaId, dias) {
+  const chave = `vendas_sync:${contaId}`;
+  let est = null;
+  try { est = JSON.parse(D.configLer(chave) || 'null'); } catch {}
+  const agora = new Date();
+  const de = new Date(Date.parse(A.diasDaJanela(dias)[0] + 'T03:00:00.000Z')); // 00h do 1º dia, horário de Brasília
+  let baixados = 0;
+  const gravar = (pedidos) => {
+    D.vendasGravar(pedidos.flatMap((o) => linhasDoPedido(o, contaId)));
+    baixados += pedidos.length;
+  };
+
+  if (!est || !est.desde || !est.ate) {
+    gravar(await baixarPedidos(contaId, 'date_created', de, agora));
+    est = { desde: de.toISOString(), ate: agora.toISOString() };
+  } else {
+    if (de < new Date(est.desde)) {                       // janela maior que a já baixada
+      gravar(await baixarPedidos(contaId, 'date_created', de, new Date(est.desde)));
+      est.desde = de.toISOString();
+    }
+    if (agora - new Date(est.ate) > SYNC_FRESCO_MS) {     // o que mudou desde a última vez
+      const desde = new Date(new Date(est.ate).getTime() - 5 * 60e3);
+      gravar(await baixarPedidos(contaId, 'date_last_updated', desde, agora));
+      est.ate = agora.toISOString();
+    }
+  }
+  D.configGravar(chave, JSON.stringify(est));
+  return { baixados, ate: est.ate };
+}
+
+// Janela do período em ISO (UTC), de dias completos: da 00h do primeiro dia até a 00h de
+// hoje (exclusivo), no horário de Brasília. `meio` separa as metades da tendência.
+function janela(dias) {
+  const d = A.diasDaJanela(dias);
+  const de = new Date(Date.parse(d[0] + 'T03:00:00.000Z'));
+  const ate = new Date(de.getTime() + dias * 864e5);
+  const meio = new Date(de.getTime() + (dias / 2) * 864e5);
+  return { dias, de: de.toISOString(), meio: meio.toISOString(), ate: ate.toISOString(),
+    primeiro: d[0], ultimo: d.at(-1) };
+}
+
+// Frete pago pelo vendedor, por unidade vendida. Medido em 19/09/2026: a estimativa do ML
+// (/users/{id}/shipping_options/free) deu R$ 8,25 e o cobrado de verdade
+// (/shipments/{id}/costs, senders[].cost) foi R$ 6,95 — e o vendedor pagou frete num
+// anúncio de R$ 49,90 SEM frete grátis. Por isso o lucro usa o cobrado nos envios
+// reais; a estimativa (de um envio de 1 unidade) só entra quando o anúncio não vendeu.
+// Teto de envios medidos por anúncio na janela: com ele a listagem e a análise calculam
+// sobre a MESMA amostra (sem o teto, cada abertura media mais envios e o lucro das duas
+// telas diferia por alguns reais) e as chamadas ao ML param de crescer.
+const META_FRETE = 20;
+async function freteDoItem(conta, item, j, amostra) {
+  const ja = D.fretePorUnidade(item.id, j)?.amostra || 0;
+  const faltam = D.enviosSemFrete(item.id, j, Math.max(0, Math.min(amostra, META_FRETE - ja)));
+  await emLotes(faltam, 4, async (envio) => {
+    const c = await ml(`/shipments/${envio}/costs`, {}, conta.ml_user_id).catch(() => null);
+    const s = (c?.senders || []).find((x) => Number(x.user_id) === Number(conta.ml_user_id));
+    if (s && Number.isFinite(s.cost)) D.freteGravar(conta.ml_user_id, envio, s.cost);
+  });
+  const m = D.fretePorUnidade(item.id, j);
+  if (m?.amostra && m.unidades > 0) return { por_unidade: m.custo / m.unidades, fonte: 'real', amostra: m.amostra };
+  if (item.shipping && item.shipping.mode !== 'me2') return { por_unidade: 0, fonte: 'sem_mercado_envios', amostra: 0 };
+  if (!item.shipping || item.status !== 'active') return null;   // o ML só estima anúncio ativo
+  const est = await ml(`/users/${conta.ml_user_id}/shipping_options/free?item_id=${item.id}`
+    + `&free_shipping=${!!item.shipping.free_shipping}&verbose=true`, {}, conta.ml_user_id).catch(() => null);
+  const custo = est?.coverage?.all_country?.list_cost;
+  return Number.isFinite(custo) ? { por_unidade: custo, fonte: 'estimativa', amostra: 0 } : null;
+}
+
+// Todos os anúncios da conta que passam no filtro, para ordenar pelo período.
+// O /items/search para em offset 1000; acima disso a ordenação considera os 1000 mais recentes.
+const idsCache = new Map();
+async function idsDaConta(conta, status, q) {
+  const chave = `${conta.ml_user_id}|${status || ''}|${q || ''}`;
+  const c = idsCache.get(chave);
+  if (c && Date.now() - c.em < 60e3) return c;
+  const qs = new URLSearchParams({ limit: '100', orders: 'last_updated_desc' });
+  if (status) qs.set('status', status);
+  if (q) qs.set('q', q);
+  const base = `/users/${conta.ml_user_id}/items/search?${qs}`;
+  const p1 = await ml(`${base}&offset=0`);
+  const total = p1.paging?.total ?? 0;
+  const offsets = [];
+  for (let off = 100; off < Math.min(total, 1000); off += 100) offsets.push(off);
+  const resto = await emLotes(offsets, 4, (off) => ml(`${base}&offset=${off}`));
+  const ids = [...new Set([p1, ...resto].flatMap((p) => p.results || []))];
+  const r = { ids, total, cortado: total > ids.length, em: Date.now() };
+  idsCache.set(chave, r);
+  return r;
+}
+
+const ORDENS_PERIODO = ['vendas_desc', 'vendas_asc', 'abc', 'queda'];
+
 // ---------- rotas de caminho fixo ----------
 const ATRIBUTOS_LISTA = ['id', 'title', 'price', 'available_quantity', 'sold_quantity', 'status',
   'sub_status', 'secure_thumbnail', 'thumbnail', 'permalink', 'listing_type_id', 'health',
@@ -755,12 +913,13 @@ const routes = {
   // ----- listagem -----
   'GET /api/items': async (url) => {
     const conta = contaOuErro();
-    const qs = new URLSearchParams({
-      limit: String(Math.min(20, Math.max(1, Number(url.searchParams.get('limit')) || 20))),
-      offset: String(Math.max(0, Number(url.searchParams.get('offset')) || 0)),
-    });
+    const limite = Math.min(20, Math.max(1, Number(url.searchParams.get('limit')) || 20));
+    const offset = Math.max(0, Number(url.searchParams.get('offset')) || 0);
+    const dias = A.diasValidos(url.searchParams.get('dias'));
+    const qs = new URLSearchParams({ limit: String(limite), offset: String(offset) });
     const status = url.searchParams.get('status');
-    if (status && ['active', 'paused', 'closed', 'under_review'].includes(status)) qs.set('status', status);
+    const statusOk = status && ['active', 'paused', 'closed', 'under_review'].includes(status) ? status : null;
+    if (statusOk) qs.set('status', statusOk);
     // Sem isto o padrao do ML e stop_time_asc, que joga os anuncios mortos na 1a pagina
     // — e o vendedor conclui que as visitas estao zeradas.
     const ORDENS = ['stop_time_asc','stop_time_desc','start_time_asc','start_time_desc',
@@ -771,24 +930,125 @@ const routes = {
     const q = (url.searchParams.get('q') || '').trim();
     if (q) qs.set('q', q);
 
-    const busca = await ml(`/users/${conta.ml_user_id}/items/search?${qs}`);
-    const ids = busca.results || [];
-    const total = busca.paging?.total ?? 0;
-    if (!ids.length) return { total, offset: Number(qs.get('offset')), itens: [] };
+    let ids, total, aviso = null;
+    if (ORDENS_PERIODO.includes(ordem)) {
+      // O ML só ordena pelo total de sempre. "No período" e curva ABC saem da cópia local
+      // dos pedidos: pega todos os anúncios do filtro, ordena aqui e corta a página.
+      const [lista] = await Promise.all([idsDaConta(conta, statusOk, q), sincronizarVendas(conta, dias)]);
+      const j = janela(dias);
+      const r = Object.fromEntries(D.vendasResumo(conta.ml_user_id, j).map((x) => [x.item_id, x]));
+      const abc = A.curvaABC(Object.fromEntries(Object.entries(r).map(([id, x]) => [id, x.faturamento])));
+      const un = (id) => r[id]?.unidades || 0;
+      // [critério, desempate]: menor vem primeiro
+      const chave = {
+        vendas_desc: (id) => [-un(id), -(r[id]?.faturamento || 0)],
+        vendas_asc: (id) => [un(id), 0],
+        abc: (id) => [abc[id]?.ranking ?? Infinity, 0],
+        // maior queda primeiro; no empate (vários -100%), quem perdeu mais vendas. Quem tem
+        // pouca venda para medir vai para o fim.
+        queda: (id) => {
+          const t = A.tendencia(r[id]?.antes || 0, r[id]?.depois || 0, A.MINIMO.vendas);
+          return t.delta == null ? [Infinity, 0] : [t.delta, -(r[id]?.antes || 0)];
+        },
+      }[ordem];
+      const cmp = (x, y) => (x === y ? 0 : x < y ? -1 : 1);
+      // empate total (e Infinity contra Infinity) fica na ordem do ML: atualizado recentemente primeiro
+      const ordenados = lista.ids.map((id, i) => [id, chave(id), i])
+        .sort((a, b) => cmp(a[1][0], b[1][0]) || cmp(a[1][1], b[1][1]) || a[2] - b[2]).map((x) => x[0]);
+      ids = ordenados.slice(offset, offset + limite);
+      total = ordenados.length;
+      if (lista.cortado) aviso = `A ordenação considera os ${ordenados.length} anúncios atualizados mais recentemente, de ${lista.total}.`;
+    } else {
+      const busca = await ml(`/users/${conta.ml_user_id}/items/search?${qs}`);
+      ids = busca.results || [];
+      total = busca.paging?.total ?? 0;
+    }
+    if (!ids.length) return { total, offset, dias, itens: [], aviso };
 
     const multi = await ml(`/items?ids=${ids.join(',')}&attributes=${ATRIBUTOS_LISTA}`);
     // /visits/items aceita UM id por chamada — daí o leque em paralelo, não um multiget.
     const visitas = Object.fromEntries(await Promise.all(ids.map(async (id) => {
-      const v = await ml(`/items/${id}/visits/time_window?last=30&unit=day`).catch(() => null);
-      return [id, v?.total_visits ?? null];
+      const v = await ml(`/items/${id}/visits/time_window?last=${dias + 1}&unit=day`).catch(() => null);
+      if (!v) return [id, null];
+      const serie = A.serieNaJanela(Object.fromEntries((v.results || []).map((d) => [d.date.slice(0, 10), d.total])), dias);
+      const [antes, depois] = A.metades(serie);
+      return [id, { total: serie.reduce((a, b) => a + b, 0), serie: A.agrupar(serie),
+        tendencia: A.tendencia(antes, depois, A.MINIMO.visitas) }];
     })));
 
-    const itens = multi.filter((x) => x.code === 200).map((x) => ({
-      ...x.body, visitas_30d: visitas[x.body.id] ?? null,
-      tem_familia: !!x.body.family_name, tem_variacoes: (x.body.variations || []).length > 0,
+    const custos = D.custosDe(ids);
+    const porId = Object.fromEntries(multi.filter((x) => x.code === 200).map((x) => [x.body.id, x.body]));
+    const itens = ids.filter((id) => porId[id]).map((id) => ({
+      ...porId[id], visitas: visitas[id], custo: custos[id] || null,
+      tem_familia: !!porId[id].family_name, tem_variacoes: (porId[id].variations || []).length > 0,
     }));
     for (const it of itens) D.produtoSincronizar(conta.ml_user_id, it);
-    return { total, offset: Number(qs.get('offset')), itens };
+    return { total, offset, dias, itens, aviso };
+  },
+
+  // Vendas, curva ABC, tendência e lucro do período para os anúncios da página.
+  // A curva ABC é da conta inteira: o anúncio é A por faturar muito entre TODOS, não na página.
+  'GET /api/periodo': async (url) => {
+    const conta = contaOuErro();
+    const dias = A.diasValidos(url.searchParams.get('dias'));
+    const ids = [...new Set((url.searchParams.get('ids') || '').split(','))].filter((x) => ITEM_ID.test(x)).slice(0, 50);
+    const sync = await sincronizarVendas(conta, dias);
+    const j = janela(dias);
+    const resumo = D.vendasResumo(conta.ml_user_id, j);
+    const r = Object.fromEntries(resumo.map((x) => [x.item_id, x]));
+    const abc = A.curvaABC(Object.fromEntries(resumo.map((x) => [x.item_id, x.faturamento])));
+    const imposto = D.impostoLer(conta.ml_user_id);
+    const custos = D.custosDe(ids);
+
+    const porDia = {};
+    for (const l of D.vendasDiarias(ids, j)) {
+      const d = A.diaLocal(l.data);
+      (porDia[l.item_id] ||= {})[d] = (porDia[l.item_id][d] || 0) + l.quantidade;
+    }
+    // Frete só de quem tem custo cadastrado e vendeu: sem custo não há lucro a mostrar.
+    // Amostra pequena (5 envios novos por anúncio) — a análise do anúncio mede mais, e o
+    // que ela mede fica guardado e vale aqui também.
+    const precisaFrete = ids.filter((id) => custos[id]?.custo != null && r[id]?.envios > 0);
+    const itensML = precisaFrete.length
+      ? Object.fromEntries((await ml(`/items?ids=${precisaFrete.join(',')}&attributes=id,status,shipping`))
+        .filter((x) => x.code === 200).map((x) => [x.body.id, x.body]))
+      : {};
+    const fretes = Object.fromEntries(await emLotes(precisaFrete, 4, async (id) =>
+      [id, itensML[id] ? await freteDoItem(conta, itensML[id], j, 5) : null]));
+
+    const itens = {};
+    for (const id of ids) {
+      const x = r[id] || { unidades: 0, pedidos: 0, faturamento: 0, tarifas: 0, envios: 0, antes: 0, depois: 0 };
+      const c = custos[id] || {};
+      const eco = A.economia({ faturamento: x.faturamento, unidades: x.unidades,
+        tarifas: x.tarifas, freteUnidade: fretes[id]?.por_unidade ?? null, custo: c.custo ?? null,
+        outros: c.outros ?? null, impostoPct: imposto });
+      itens[id] = {
+        unidades: x.unidades, pedidos: x.pedidos, faturamento: x.faturamento, tarifas: x.tarifas,
+        abc: abc[id] || null,
+        serie: A.agrupar(A.serieNaJanela(porDia[id], dias)),
+        tendencia: A.tendencia(x.antes, x.depois, A.MINIMO.vendas),
+        custo: c.custo ?? null, frete: fretes[id] || null,
+        lucro: eco.lucro, margem: eco.margem, falta: eco.falta,
+      };
+    }
+    const soma = (k) => resumo.reduce((s, x) => s + (x[k] || 0), 0);
+    return {
+      janela: { dias, de: j.primeiro, ate: j.ultimo }, imposto_pct: imposto,
+      sincronizado_em: sync.ate, baixados_agora: sync.baixados,
+      conta: { faturamento: soma('faturamento'), unidades: soma('unidades'), pedidos: soma('pedidos'),
+        anuncios_com_venda: resumo.length },
+      itens,
+    };
+  },
+
+  // Imposto sobre a venda (% do faturamento), da conta inteira.
+  'PUT /api/imposto': async (_u, body) => {
+    const conta = contaOuErro();
+    const pct = body.pct === null || body.pct === '' ? null : Number(body.pct);
+    if (pct != null && !(Number.isFinite(pct) && pct >= 0 && pct < 100)) throw erro400('Imposto deve ficar entre 0% e 99%.');
+    D.impostoGravar(conta.ml_user_id, pct);
+    return { imposto_pct: D.impostoLer(conta.ml_user_id) };
   },
 
   'GET /api/products': async () => {
@@ -1065,52 +1325,48 @@ const rotasParam = [
   { m: 'GET', re: /^\/api\/items\/([A-Z]{3}\d+)\/analytics$/, fn: async ([id], _b, url) => {
     exigeItemId(id);
     const conta = contaOuErro();
-    const dias = [30, 60, 90, 150].includes(Number(url?.searchParams.get('dias')))
-      ? Number(url.searchParams.get('dias')) : 30;
-    const ate = new Date(), de = new Date(Date.now() - dias * 864e5);
-    const dia = (d) => d.toISOString().slice(0, 10);
-    const stamp = (d, fim) => d.toISOString().slice(0, 10) + (fim ? 'T23:59:59.000-00:00' : 'T00:00:00.000-00:00');
+    const dias = A.diasValidos(url?.searchParams.get('dias'));
+    const j = janela(dias);
     const nada = () => null;
-    const janela = `&order.date_created.from=${stamp(de)}&order.date_created.to=${stamp(ate, true)}`;
 
     const [item, visitas, historico, perguntas, avaliacoes, ads] = await Promise.all([
       ml(`/items/${id}`),
-      ml(`/items/${id}/visits/time_window?last=${dias}&unit=day`).catch(nada),
-      ml(`/visits/items?ids=${id}&date_from=${dia(de)}&date_to=${dia(ate)}`).catch(nada),
+      ml(`/items/${id}/visits/time_window?last=${dias + 1}&unit=day`).catch(nada),
+      ml(`/visits/items?ids=${id}&date_from=${j.primeiro}&date_to=${j.ultimo}`).catch(nada),
       ml(`/questions/search?item=${id}&limit=50`).catch(nada),
       ml(`/reviews/item/${id}`).catch(nada),
       ml(`/advertising/product_ads/ads/${id}`, { headers: { 'api-version': '2' } }).catch(nada),
+      sincronizarVendas(conta, dias),
     ]);
 
-    // Pedidos DA JANELA. paging.total já é exato; as páginas servem ao faturamento.
-    const TETO = 200;
-    let pedidos = [], total_pedidos = 0, parcial = false;
-    try {
-      const base = `/orders/search?seller=${conta.ml_user_id}&q=${id}${janela}&sort=date_desc`;
-      const p1 = await ml(`${base}&limit=50`);
-      total_pedidos = p1.paging?.total ?? 0;
-      pedidos = p1.results || [];
-      for (let off = 50; off < Math.min(total_pedidos, TETO); off += 50) {
-        pedidos = pedidos.concat((await ml(`${base}&limit=50&offset=${off}`)).results || []);
-      }
-      parcial = total_pedidos > TETO;
-    } catch { total_pedidos = 0; }
+    // Pedidos da janela saem da cópia local (a mesma da listagem): sem o teto de 200
+    // pedidos da busca textual, e só venda paga — cancelado não é faturamento.
+    const x = D.vendasResumo(conta.ml_user_id, j).find((v) => v.item_id === id)
+      || { unidades: 0, pedidos: 0, faturamento: 0, tarifas: 0, envios: 0, antes: 0, depois: 0 };
+    const porDia = {};
+    for (const l of D.vendasDiarias([id], j)) {
+      const d = A.diaLocal(l.data);
+      porDia[d] = (porDia[d] || 0) + l.quantidade;
+    }
 
-    // "q" é busca textual: confere o item antes de somar dinheiro.
-    const meus = pedidos.filter((o) => (o.order_items || []).some((oi) => oi.item?.id === id));
-    const faturamento = meus.reduce((s, o) => s + (o.total_amount || 0), 0);
-    const unidades = meus.reduce((s, o) => s + (o.order_items || [])
-      .filter((oi) => oi.item?.id === id).reduce((u, oi) => u + (oi.quantity || 0), 0), 0);
-
-    const custo = await ml(`/sites/${item.site_id}/listing_prices?price=${item.price}`
-      + `&listing_type_id=${item.listing_type_id}&category_id=${item.category_id}`).catch(nada);
-    const tendencias = await ml(`/trends/${item.site_id}/${item.category_id}`).catch(nada);
+    const [custo, tendencias, frete] = await Promise.all([
+      ml(`/sites/${item.site_id}/listing_prices?price=${item.price}`
+        + `&listing_type_id=${item.listing_type_id}&category_id=${item.category_id}`).catch(nada),
+      ml(`/trends/${item.site_id}/${item.category_id}`).catch(nada),
+      freteDoItem(conta, item, j, 20).catch(nada),
+    ]);
 
     const notas = (avaliacoes?.reviews || []).map((r) => r.rate).filter(Number.isFinite);
-    const serie = (visitas?.results || []).map((d) => ({ data: d.date.slice(0, 10), total: d.total }));
+    // Medido: a série do ML não vem em ordem de data e pula dia sem visita. Alinha pela data.
+    const visitasDia = A.serieNaJanela(Object.fromEntries((visitas?.results || [])
+      .map((d) => [d.date.slice(0, 10), d.total])), dias);
+    const vendasDia = A.serieNaJanela(porDia, dias);
+    const datas = A.diasDaJanela(dias);
+    const pico = visitasDia.reduce((m, v, i) => (v > (m?.total ?? -1) ? { data: datas[i], total: v } : m), null);
+    const [vAntes, vDepois] = A.metades(visitasDia);
 
     return {
-      janela: { dias, de: dia(de), ate: dia(ate) },
+      janela: { dias, de: j.primeiro, ate: j.ultimo },
       item: {
         id: item.id, titulo: item.title, preco: item.price, moeda: item.currency_id,
         status: item.status, sub_status: item.sub_status, estoque: item.available_quantity,
@@ -1120,19 +1376,29 @@ const rotasParam = [
         catalogo: !!item.catalog_listing, frete_gratis: !!item.shipping?.free_shipping,
       },
       visitas: {
-        janela: visitas?.total_visits ?? null,
+        janela: visitas ? visitasDia.reduce((a, b) => a + b, 0) : null,
         historico: historico?.[id] ?? null,   // a API ignora as datas aqui: é o total de sempre
-        serie,
-        pico: serie.reduce((a, b) => (a && a.total >= b.total ? a : b), null),
+        datas, serie: visitasDia, pico: pico?.total ? pico : null,
+        tendencia: A.tendencia(vAntes, vDepois, A.MINIMO.visitas),
       },
       vendas: {
-        pedidos: total_pedidos, unidades, faturamento, parcial,
-        ticket_medio: meus.length ? faturamento / meus.length : null,
-        conversao: visitas?.total_visits ? total_pedidos / visitas.total_visits : null,
+        pedidos: x.pedidos, unidades: x.unidades, faturamento: x.faturamento, tarifas: x.tarifas,
+        envios: x.envios, serie: vendasDia,
+        tendencia: A.tendencia(x.antes, x.depois, A.MINIMO.vendas),
+        ticket_medio: x.pedidos ? x.faturamento / x.pedidos : null,
+        conversao: visitas && visitasDia.some(Boolean) ? x.pedidos / visitasDia.reduce((a, b) => a + b, 0) : null,
         vendidos_historico: item.sold_quantity,
-        ultimos: meus.slice(0, 5).map((o) => ({
-          id: o.id, data: o.date_created, total: o.total_amount, status: o.status,
+        ultimos: D.vendasUltimas(id, 5).map((o) => ({
+          id: o.order_id, data: o.data, total: o.total, status: o.status, quantidade: o.quantidade,
         })),
+      },
+      // O que entra na conta do lucro. A tela recalcula com public/analise.js quando o
+      // vendedor digita o custo — os mesmos números, sem voltar ao servidor.
+      lucro: {
+        custo: D.custoObter(id), imposto_pct: D.impostoLer(conta.ml_user_id), frete,
+        tarifa_unit: custo?.sale_fee_amount ?? null,
+        tarifa_pct: custo?.sale_fee_details?.percentage_fee ?? null,
+        tarifa_fixa: custo?.sale_fee_details?.fixed_fee ?? 0,
       },
       custo: custo ? {
         taxa_venda: custo.sale_fee_amount,
@@ -1152,6 +1418,22 @@ const rotasParam = [
       ads: ads ? { status: ads.status, campanha: ads.campaign_id, grupo: ads.ad_group_id } : null,
       tendencias: (tendencias || []).slice(0, 8).map((t) => t.keyword),
     };
+  } },
+
+  // Custo do produto e outros custos por unidade (embalagem, etiqueta…). Só existem aqui:
+  // o Mercado Livre não sabe quanto o vendedor pagou no produto.
+  { m: 'PUT', re: /^\/api\/items\/([A-Z]{3}\d+)\/custo$/, fn: async ([id], body) => {
+    const conta = contaOuErro();
+    const valor = (v, nome) => {
+      if (v === null || v === undefined || v === '') return null;
+      const n = Number(v);
+      if (!Number.isFinite(n) || n < 0 || n > 1e7) throw erro400(`${nome} inválido.`);
+      return Math.round(n * 100) / 100;
+    };
+    D.custoGravar(conta.ml_user_id, exigeItemId(id), {
+      custo: valor(body.custo, 'Custo do produto'), outros: valor(body.outros, 'Outros custos'),
+    });
+    return D.custoObter(id);
   } },
 
   // tipo de anúncio tem endpoint próprio: o PUT /items recusa listing_type_id

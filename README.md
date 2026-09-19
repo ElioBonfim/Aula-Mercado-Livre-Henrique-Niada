@@ -274,11 +274,14 @@ Na porta local, só atende pedidos com `Host` local; pela internet, ver 7.2. Tud
 | GET | `/api/accounts` | contas conectadas (nunca devolve token) |
 | POST | `/api/accounts/active` | troca a conta ativa |
 | POST | `/api/accounts/remove` | esquece o token de uma conta |
-| GET | `/api/items` | lista anúncios (`status`, `q`, `sort`, `offset`, `limit`) |
+| GET | `/api/items` | lista anúncios (`status`, `q`, `sort`, `offset`, `limit`, `dias`), com visitas do período |
+| GET | `/api/periodo?dias=&ids=` | vendas, curva ABC, tendência e lucro do período (ver 9.1) |
+| PUT | `/api/items/:id/custo` | grava custo do produto e outros custos por unidade (só no painel) |
+| PUT | `/api/imposto` | imposto sobre a venda (%) da conta ativa |
 | GET | `/api/items/:id` | anúncio completo + descrição + visitas |
 | PUT | `/api/items/:id` | edita o anúncio |
 | PUT | `/api/items/:id/description` | troca a descrição |
-| GET | `/api/items/:id/analytics?dias=` | painel do anúncio numa janela (30/60/90/150 dias) |
+| GET | `/api/items/:id/analytics?dias=` | painel do anúncio numa janela (15/30/60/90/150 dias), com lucro |
 | GET | `/api/items/:id/quality` | health e sugestões do ML |
 | GET | `/api/items/:id/upgrades` | trocas de tipo de anúncio disponíveis |
 | POST | `/api/items/:id/listing-type` | troca o tipo de anúncio |
@@ -436,6 +439,7 @@ Outras regras medidas:
 ## 9. Análise por anúncio
 
 O menu **⋮ → Análise do anúncio** abre um painel com tudo que a API entrega sobre um item.
+No topo, o nome do produto (H1), o código do anúncio e o link para vê-lo no Mercado Livre.
 `GET /api/items/:id/analytics` junta oito chamadas em paralelo; cada bloco falha sozinho,
 então um endpoint fora do ar não derruba o resto.
 
@@ -443,16 +447,79 @@ então um endpoint fora do ar não derruba o resto.
 |---|---|---|
 | Visitas 30 dias + série diária | `/items/{id}/visits/time_window` | 484 visitas, pico de 69 num dia |
 | Visitas desde sempre | `/visits/items` | 9.449 |
-| Pedidos, unidades, faturamento, ticket | `/orders/search` filtrado pelo item | 50 pedidos · R$ 22.587,21 |
+| Pedidos, unidades, faturamento, ticket | cópia local dos pedidos (9.1) | só pedidos pagos da janela, sem teto |
 | **Conversão** | pedidos ÷ visitas | 10,3% |
-| Taxa do ML e líquido | `/sites/{site}/listing_prices` | taxa R$ 82,61 (13,5%) · recebe R$ 529,30 |
+| Taxa do ML (preço de hoje) | `/sites/{site}/listing_prices` | taxa R$ 82,61 (13,5%) |
+| Frete pago pelo vendedor | `/shipments/{id}/costs` dos envios reais (9.2) | por unidade vendida |
+| **Lucro real e margem** | pedidos + frete + o custo que o vendedor digita (9.2) | lucro do período, margem e markup |
 | Avaliações e nota | `/reviews/item/{id}` | 65 avaliações · nota 5,0 |
 | Perguntas e sem responder | `/questions/search` | 41 · 0 sem responder |
 | Mercado Ads | `/advertising/product_ads/ads/{id}` | active · id da campanha |
 | Tendências da categoria | `/trends/{site}/{categoria}` | o que as pessoas buscam |
 
-`/orders/search?q=` é busca textual, não filtro: o servidor confere `order_items[].item.id`
-antes de somar, senão pedido de outro produto entraria na conta.
+Visitas e vendas ficam em **dois gráficos**, cada um com a sua escala (nunca dois eixos no
+mesmo gráfico). Passar o mouse mostra o valor do dia.
+
+### 9.1 Período na listagem: vendas, curva ABC e tendência
+
+A listagem tem um seletor de **Período** (15, 30, 60, 90 ou 150 dias). Cada anúncio ganha uma
+faixa com: gráfico de vendas e de visitas, selo **▼ em queda / ▲ em alta / ● estável**,
+unidades e faturamento do período, selo da **curva ABC** e o lucro real (se o custo estiver
+cadastrado). O topo resume a conta: faturamento, pedidos, unidades e quantos anúncios venderam.
+
+Ordenações novas, todas **no período escolhido**: *Mais vendidos*, *Menos vendidos*,
+*Curva ABC (faturamento)* e *Maiores quedas de venda*. As do ML (`sold_quantity`) seguem lá
+como "(total)", porque contam desde a criação do anúncio.
+
+| Regra | Como é |
+|---|---|
+| Janela | dias **completos**, de 00h a 00h de Brasília, **até ontem**. Hoje fica de fora: é um dia pela metade e, medido numa conta real, o último ponto de todo gráfico afundava (409 → 227 visitas), jogando qualquer anúncio para "em queda" |
+| Tendência | 2ª metade da janela contra a 1ª. ±15% ou mais é alta/queda; menos que isso, estável. Abaixo de 6 unidades (ou 30 visitas) somadas, diz "pouco dado" em vez de "queda de 100%" |
+| Curva ABC | por faturamento da **conta inteira** no período: A soma os primeiros 80%, B os 15% seguintes, C o resto. Quem não vendeu é C |
+| Venda | pedido `paid` ou `partially_refunded`. Cancelado não é faturamento |
+
+**Por que uma cópia local dos pedidos.** O ML só ordena pelo total de sempre, e somar o
+período anúncio a anúncio não escala: uma conta real tinha **11.058 pedidos em 150 dias**
+(~220 chamadas por tela). O painel guarda as linhas de pedido na tabela `vendas`: a
+primeira abertura de uma janela baixa os pedidos dela (2.056 pedidos de 30 dias em ~2,5 s);
+depois, só o que mudou desde a última vez (`order.date_last_updated.from`), o que também
+pega a venda antiga que foi cancelada. Medido na API:
+
+| Fato | Consequência |
+|---|---|
+| `limit` aceita até **51**; `offset + limit` acima de **10.000** dá 400 | janela com mais pedidos é fatiada ao meio por data até caber |
+| `order_items[].sale_fee` é a tarifa **por unidade** (3 un. a R$ 31,47 → 3,62) | tarifa do pedido = `sale_fee × quantity` |
+| a série de visitas **não vem em ordem de data** e pula dias sem visita | a série é alinhada pela data, nunca pela posição |
+
+### 9.2 Custos, lucro real e margem de contribuição
+
+No bloco **Custos e lucro** da análise o vendedor digita o **custo do produto** e os **outros
+custos** (embalagem, etiqueta) por unidade, e o **imposto** (% sobre a venda, um só para a
+conta). Ficam no `dados.sqlite`: o Mercado Livre não sabe quanto o produto custou. O
+resultado recalcula a cada tecla e só grava em **Salvar custos**. Na listagem, anúncio sem
+custo mostra **Informar custo**, que abre a análise já no campo.
+
+```
+margem de contribuição (1 venda, preço de hoje)
+  = preço − tarifa do ML − frete − custo do produto − outros − imposto sobre o preço
+lucro real (período)
+  = Σ preço pago nos pedidos − Σ tarifas cobradas − frete − custo × unidades − outros − imposto
+```
+
+É a mesma conta da calculadora do Henrique
+([calculadora-margem-hn](https://github.com/HN-devs-mentoria/calculadora-margem-hn)):
+margem = lucro ÷ preço, markup = lucro ÷ custo. A análise mostra também o **preço mínimo sem
+prejuízo** (aproximado: tarifa e frete mudam por faixa de preço).
+
+**Frete é o cobrado de verdade, não a estimativa.** Medido em 19/09/2026: para o mesmo
+anúncio a estimativa do ML (`/users/{id}/shipping_options/free`) deu R$ 8,25 e o cobrado
+(`/shipments/{id}/costs`, `senders[].cost`) foi R$ 6,95 — e o vendedor pagou frete num item
+de R$ 49,90 **sem** frete grátis. O painel consulta até **20 envios** de cada anúncio na
+janela, guarda cada custo na tabela `fretes` (não muda depois do envio) e usa **frete por
+unidade = Σ frete ÷ Σ unidades** desses envios: numa conta real o frete por envio ia de R$ 0
+a R$ 253 conforme a quantidade no pedido, e a média por envio errava. A estimativa só entra
+quando o anúncio não vendeu na janela. Sem custo ou sem frete conhecido, o painel **não
+mostra lucro** — nunca troca o que falta por zero.
 
 ### Até onde o histórico vai — medido
 
@@ -481,7 +548,7 @@ certo  : 11 pedidos ÷ 523 visitas 30d = 2,1%
 ```
 
 Quase 5× inflado. Agora visitas, pedidos, faturamento e conversão usam **a mesma janela**,
-escolhida no seletor da modal (30, 60, 90 ou 150 dias) — e a conversão fica estável entre
+escolhida no seletor da modal (15, 30, 60, 90 ou 150 dias) — e a conversão fica estável entre
 elas (2,1% / 2,2% / 2,3%), que é o sinal de que a conta fecha.
 
 ### Posição na listagem
@@ -586,6 +653,9 @@ e pega os 60.
 | `produtos` | cada anúncio publicado ou listado, com o payload, ligado à conta |
 | `notificacoes` | tudo que chega no webhook, JSON válido ou não |
 | `palavras`, `posicoes` | termos acompanhados e o histórico de posição na busca |
+| `vendas` | cópia das linhas de pedido (data, status, quantidade, preço, tarifa, envio), sincronizada por conta |
+| `fretes` | custo de envio cobrado do vendedor, por envio (consultado uma vez) |
+| `custos` | custo do produto e outros custos por unidade, por anúncio (o imposto da conta fica em `estado`) |
 
 Tokens e chave secreta usam **AES-256-GCM** com chave derivada de `ML_DB_KEY`, que o `npm start` gera sozinho no `.env` na primeira vez. **Perder o `.env` = reconectar as contas** (os tokens ficam ilegíveis). Guardamos só id, nickname e site da conta: nada de CPF, e-mail ou endereço, que o `/users/me` devolve mas o sistema não usa.
 
@@ -601,6 +671,7 @@ npm test
 |---|---|
 | `test.js` | montagem do payload de publicação e de edição |
 | `test-db.js` | cifra, multi-conta, isolamento, senha (scrypt), sessões, histórico de URLs |
+| `test-analise.js` | janela até ontem, série fora de ordem, tendência e "pouco dado", curva ABC, lucro real, margem, preço mínimo, frete por unidade, venda cancelada saindo da conta |
 | `test-config.js` | a regra do aviso "a URL mudou": confere, mudou, barra no fim, fluxos, plano B |
 | `test-servidor.js` | sobe os dois servidores e prova as fronteiras: senha nunca criada pela internet, limite de tentativas (por IP e somado), cookie `Secure` online, `PAINEL_ONLINE=0`, porta local só para localhost, site de fora não cria a senha, `state` do OAuth de uso único, sessão revogável, sem escapar de `public/` |
 
