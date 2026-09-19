@@ -53,7 +53,7 @@ Para encerrar: `Ctrl+C` no terminal. Painel, scraper e túnel param juntos.
 11. [Testes](#11-testes)
 12. [Quando der errado](#12-quando-der-errado)
 13. [Segurança](#13-segurança)
-14. [Créditos](#14-créditos)
+14. [Créditos e licença](#14-créditos-e-licença)
 
 ---
 
@@ -664,11 +664,13 @@ node -e "require('./ambiente').carregar();require('./db').db.prepare(\"DELETE FR
 
 ---
 
-## 14. Créditos
+## 14. Créditos e licença
 
 Projeto da **Aula Mercado Livre - Henrique Niada**.
 
 O scraper começou a partir do projeto `alxmares/webscraping-MercadoLibre`, uma ferramenta em Tkinter para copiar dados de anúncios do Mercado Livre. A abordagem original — `requests` direto na página — parou de funcionar: o Mercado Livre bloqueia acesso anônimo à listagem e devolve parede de login ou reCAPTCHA. Este repositório troca isso por um navegador real com a sua sessão logada (Playwright, perfil persistente), e acrescenta CLI, API HTTP, sessão interativa pelo painel e testes. Nenhum arquivo do projeto original foi incluído: o repositório de origem **não declara licença**, então os direitos permanecem com o autor.
+
+Licença **MIT** — ver [`LICENSE`](LICENSE). Pode usar, copiar, modificar e redistribuir, mantendo o aviso de copyright.
 
 ---
 

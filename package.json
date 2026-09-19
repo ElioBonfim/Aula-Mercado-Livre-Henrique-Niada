@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Aula Mercado Livre - Henrique Niada: painel da API oficial do Mercado Livre + scraper com navegador logado, rodando local com túnel HTTPS automático.",
   "private": true,
-  "license": "UNLICENSED",
+  "license": "MIT",
   "main": "iniciar.js",
   "scripts": {
     "setup": "node --disable-warning=ExperimentalWarning instalar.js",
