@@ -831,6 +831,9 @@ const routes = {
       app: app ? { nome: app.nome, fluxos: app.fluxos, use_pkce: app.use_pkce,
         bloqueado: app.bloqueado, topicos: app.topicos } : null,
       historico_urls: D.urlsPublicasHistorico(5),
+      // Para a tela ensinar a ligar o Claude Code: a pasta onde abrir e se a escrita está
+      // ligada. Caminho local não é segredo — e esta rota já exige a sessão do painel.
+      mcp: { pasta: __dirname, escrita: process.env.ML_MCP_ESCRITA !== '0' },
       scraper: servicos.scraper(),
       scraper_gerenciado: !!servicos.reiniciarScraper,
       painel_online: painelOnline(),

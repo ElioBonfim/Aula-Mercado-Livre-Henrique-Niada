@@ -762,6 +762,8 @@ O `mcp.js` é um servidor **MCP local**: ele entrega ao Claude Code (ou a outro 
 
 **Como ligar.** Abra o Claude Code **na pasta do projeto**. O `.mcp.json` já está no repositório: ele pergunta se você aprova o servidor `mercado-livre` e pronto. Confira com o comando `/mcp` — deve aparecer `mercado-livre: connected`. Nada a instalar: o servidor não tem dependência nenhuma além do próprio Node.
 
+A tela **Configurações** do painel ensina isso sem sair de lá: mostra o estado (se já dá para usar ou se falta conectar a conta), a pasta do projeto e a linha pronta para colar no Terminal (`cd "…" && claude`), com botão de copiar.
+
 **Não pede login nem OAuth.** Ele usa a conta que **você já conectou no painel** (passo 3 das Configurações). Os tokens continuam cifrados no SQLite e são renovados pelo mesmo código do painel. Se nenhuma conta estiver conectada, as ferramentas dizem isso em vez de falhar em silêncio.
 
 **Não abre porta nenhuma.** A conversa é por `stdin`/`stdout`, entre o Claude Code e o processo, neste computador. O túnel não publica nada disso — e **de propósito não existe rota HTTP de repasse** para a API do ML: pela porta pública ela viraria "faça qualquer coisa na conta do vendedor" para quem descobrisse a URL.
