@@ -831,6 +831,9 @@ const routes = {
       app: app ? { nome: app.nome, fluxos: app.fluxos, use_pkce: app.use_pkce,
         bloqueado: app.bloqueado, topicos: app.topicos } : null,
       historico_urls: D.urlsPublicasHistorico(5),
+      // Para a tela ensinar a ligar o Claude Code: a pasta onde abrir e se a escrita está
+      // ligada. Caminho local não é segredo — e esta rota já exige a sessão do painel.
+      mcp: { pasta: __dirname, escrita: process.env.ML_MCP_ESCRITA !== '0' },
       scraper: servicos.scraper(),
       scraper_gerenciado: !!servicos.reiniciarScraper,
       painel_online: painelOnline(),
@@ -1511,6 +1514,27 @@ const rotasParam = [
     ml('/' + resto, { headers: { 'api-version': '2' } }) },
 ];
 
+// ---------- despacho ----------
+// Uma rota, um caminho. O HTTP chama isto DEPOIS de conferir sessão e origem; o mcp.js
+// (stdio, só neste computador, sem rede) chama direto. Rota nova vale nos dois na hora —
+// e é por isso que a checagem de sessão fica no HTTP, não aqui.
+const achaRota = (metodo, url) => {
+  const exato = routes[`${metodo} ${url.pathname}`];
+  if (exato) return (corpo) => exato(url, corpo);
+  for (const r of rotasParam) {
+    if (r.m !== metodo) continue;
+    const m = r.re.exec(url.pathname);
+    if (m) return (corpo) => r.fn(m.slice(1), corpo, url);
+  }
+  return null;
+};
+const temRota = (metodo, url) => !!achaRota(metodo, url);
+function despachar(metodo, url, corpo = {}) {
+  const fn = achaRota(metodo, url);
+  if (!fn) throw Object.assign(new Error(`rota desconhecida: ${metodo} ${url.pathname}`), { status: 404 });
+  return fn(corpo);
+}
+
 // ---------- HTTP ----------
 // Referrer-Policy "same-origin", NUNCA "no-referrer": com no-referrer o navegador manda
 // Origin: null no POST do formulário de login, e a checagem de origem recusa o próprio aluno.
@@ -1756,15 +1780,11 @@ async function tratarPainel(req, res, online = false) {
   }
 
   // despacho
-  const exato = routes[`${req.method} ${url.pathname}`];
-  const comParam = exato ? null
-    : rotasParam.map((r) => (r.m === req.method ? [r, r.re.exec(url.pathname)] : null))
-        .find((x) => x && x[1]);
-  if (exato || comParam) {
+  if (temRota(req.method, url)) {
     try {
       let body = {};
       if (req.method === 'POST' || req.method === 'PUT') body = JSON.parse((await lerCorpo(req)) || '{}');
-      return send(200, exato ? await exato(url, body) : await comParam[0].fn(comParam[1].slice(1), body, url));
+      return send(200, await despachar(req.method, url, body));
     } catch (e) {
       return send(e.status || 500, { error: e.message, detail: e.faltando ? null : (e.body?.cause || e.errors || null),
         ...(e.faltando ? { faltando: e.faltando } : {}) });
@@ -1816,4 +1836,7 @@ if (require.main === module) {
     console.log('  Dica: "npm start" sobe também o túnel e o scraper.');
   }).catch((e) => { console.error(`Não subiu: ${e.message}`); process.exit(1); });
 }
-module.exports = { buildItem, buildEdicao, iniciar, situacaoAtual, resumoConfig };
+// `ml` sai daqui para o mcp.js fazer o repasse à API do Mercado Livre com o token da conta
+// ativa. De propósito NÃO existe rota HTTP de repasse: pela porta pública ela viraria
+// "faça qualquer coisa na conta do vendedor" para quem descobrisse a URL do túnel.
+module.exports = { buildItem, buildEdicao, iniciar, situacaoAtual, resumoConfig, despachar, temRota, ml };

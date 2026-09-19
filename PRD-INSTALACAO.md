@@ -128,6 +128,11 @@ Mostre ao aluno as duas URLs do quadro e guie, uma etapa por vez:
 **Pronto quando:** a tela Configurações mostra o passo 3 concluído (conta listada) e o
 scraper como **rodando**.
 
+**Perguntar em vez de procurar:** ainda na tela Configurações, o bloco **Claude Code** mostra a
+pasta do projeto e uma linha pronta para colar no Terminal. Com ela o aluno abre o Claude Code
+já ligado aos anúncios dele e pergunta em português ("quais meus melhores produtos dos últimos
+30 dias?"). Aponte o bloco ao aluno; o passo a passo está lá.
+
 **Usar de qualquer lugar:** mostre ao aluno o **Endereço público** da tela Configurações (é a
 mesma URL do túnel). Aberto no celular ou em outro computador, ele pede a mesma senha. Avise
 que esse endereço muda quando o painel é reiniciado, e que a senha só pode ser criada no

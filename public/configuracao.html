@@ -195,6 +195,37 @@
     </div>
   </section>
 
+  <!-- Claude Code (MCP) -->
+  <section aria-labelledby="t6">
+    <h2 id="t6">Claude Code (perguntar em vez de procurar)</h2>
+    <p class="sub">O projeto já vem com uma ponte para o Claude Code. Com ela você pergunta por escrito e ele responde com os seus dados — os mesmos deste painel: anúncios, melhores produtos, curva ABC, visitas, vendas, lucro. Não precisa instalar nada nem entrar de novo: ele usa a conta que você conectou aqui.</p>
+
+    <dl class="status">
+      <dt>Estado</dt><dd id="mcpEstado">—</dd>
+      <dt>Pasta do projeto</dt><dd id="mcpPasta" class="mono">—</dd>
+    </dl>
+
+    <label for="mcpComando">Cole isto no Terminal, neste computador</label>
+    <div class="linha">
+      <input id="mcpComando" readonly value="—">
+      <button type="button" class="ghost" data-copiar="mcpComando">Copiar</button>
+    </div>
+    <p class="sub">A linha entra na pasta do projeto e abre o Claude Code ali. É por estar nesta pasta que ele enxerga os seus anúncios.</p>
+
+    <details>
+      <summary>Passo a passo: ligar o Claude Code aos seus dados</summary>
+      <ol class="guia">
+        <li>Conecte a sua conta do Mercado Livre no <strong>passo 3</strong> acima. Sem conta conectada não há o que consultar.</li>
+        <li>Abra o <strong>Terminal</strong> e cole a linha acima.</li>
+        <li>Na primeira vez ele pergunta se pode usar o servidor <strong>mercado-livre</strong> deste projeto. Responda que <strong>sim</strong>.</li>
+        <li>Para conferir, digite <code>/mcp</code>: <code>mercado-livre</code> tem de aparecer como <em>connected</em>.</li>
+        <li>Pronto — é só perguntar em português.</li>
+      </ol>
+      <p class="sub" style="margin-top:10px"><strong>Exemplos:</strong> “quais foram meus 10 melhores produtos nos últimos 30 dias?” · “quem está na curva A?” · “o MLB123… está perdendo visitas?” · “grave custo de R$ 42,30 no MLB123… e me diga a margem” · “o que o Mercado Livre sugere melhorar nos meus anúncios?”</p>
+      <p class="sub">A conversa acontece só neste computador: o endereço público do túnel não publica nada disso. Para deixar a ponte apenas consultando, sem poder publicar nem editar, escreva <code>ML_MCP_ESCRITA=0</code> no arquivo <code>.env</code> e reinicie.</p>
+    </details>
+  </section>
+
   <!-- Senha -->
   <section aria-labelledby="t5">
     <h2 id="t5">Senha do painel</h2>
@@ -281,7 +312,8 @@ function pintar(c){
   }
   $('uCallback').value = url ? url + '/callback' : 'aguardando o túnel…';
   $('uWebhook').value = url ? url + '/webhook' : 'aguardando o túnel…';
-  document.querySelectorAll('[data-copiar]').forEach((b) => b.disabled = !url);
+  // Só os dois campos do túnel dependem dele: o comando do Claude Code funciona sem túnel.
+  document.querySelectorAll('[data-copiar="uCallback"],[data-copiar="uWebhook"]').forEach((b) => b.disabled = !url);
 
   // túnel
   const nomes = { cloudflared:'Cloudflare', localtunnel:'localtunnel', fixa:'domínio próprio' };
@@ -381,6 +413,22 @@ function pintar(c){
     $('scrUrl').textContent = sc.url;
   }
   $('btnReiniciar').disabled = !c.scraper_gerenciado;
+
+  // Claude Code (MCP). Sem conta conectada ele até liga, mas não tem o que responder —
+  // por isso o estado aqui espelha o passo 3, e não "o servidor está de pé".
+  const m = c.mcp || {};
+  const me = $('mcpEstado'); me.replaceChildren();
+  if(!c.contas){
+    me.append(pilula('warn', 'falta conectar a conta'), document.createTextNode(' — faça o passo 3 acima'));
+  } else {
+    me.append(pilula('ok', 'pronto para usar'));
+    me.append(document.createTextNode(m.escrita === false
+      ? ' — só consulta (ML_MCP_ESCRITA=0 no .env)'
+      : ' — consulta, publica e edita'));
+  }
+  $('mcpPasta').textContent = m.pasta || '—';
+  $('mcpComando').value = m.pasta ? `cd "${m.pasta}" && claude` : '—';
+  document.querySelector('[data-copiar="mcpComando"]').disabled = !m.pasta;
 }
 
 async function carregar(forcar){

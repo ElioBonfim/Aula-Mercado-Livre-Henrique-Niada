@@ -10,6 +10,8 @@ Responda em português do Brasil. Instalação do zero: siga `PRD-INSTALACAO.md`
   deixa o túnel aberto (a URL não muda no próximo `npm start`). `npm run parar` fecha tudo.
   Ao reiniciar para aplicar mudança de código, NÃO use `npm run parar`: a URL mudaria.
 - `npm run atualizar` — traz as correções do repositório da aula (fork não recebe sozinho).
+- `npm run mcp` — servidor MCP por stdio (só para depurar; o Claude Code sobe sozinho pelo
+  `.mcp.json` de quem abre esta pasta). Confira com `/mcp`.
 - `npm test` — testes do painel. Scraper: `cd scraper && uv run python test_api.py`.
 - Logs: `logs/scraper.log`, `logs/tunel.log`.
 
@@ -32,6 +34,11 @@ Responda em português do Brasil. Instalação do zero: siga `PRD-INSTALACAO.md`
   Henrique Niada (era React+Vite). Roda no navegador e no Node, como o `analise.js`, e
   `test-calculadora.js` são os 73 testes que vieram com ele. Não mexa nas fórmulas nem nas
   tabelas de comissão sem rodar esse teste: a tela e o teste leem o MESMO arquivo.
+- `mcp.js` expõe as MESMAS rotas do painel como ferramentas MCP (stdio, sem porta, sem OAuth:
+  usa a conta já conectada). Ferramenta nova = uma linha na tabela `FERRAMENTAS` apontando
+  para a rota; `server.js#despachar` é o único caminho, e `test-mcp.js` reprova ferramenta
+  que aponte para rota inexistente. O repasse livre à API do ML (`ml_api`) mora só no MCP e
+  usa `server.js#ml` — não crie rota HTTP equivalente (ver "Nunca").
 
 ## Nunca
 
@@ -40,3 +47,5 @@ Responda em português do Brasil. Instalação do zero: siga `PRD-INSTALACAO.md`
 - Usar `Referrer-Policy: no-referrer` no painel: o navegador passa a mandar `Origin: null`
   no POST do login e a checagem de origem recusa o próprio usuário.
 - Expor a porta do scraper pelo túnel, ou deixar o primeiro acesso (criar senha) alcançável online.
+- Criar rota HTTP de repasse para a API do Mercado Livre: pela porta pública ela vira "faça
+  qualquer coisa na conta do vendedor" para quem achar a URL do túnel. Repasse é só no MCP.
