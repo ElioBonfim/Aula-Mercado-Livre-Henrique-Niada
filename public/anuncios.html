@@ -1,0 +1,1522 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meus anúncios — Mercado Livre</title>
+<style>
+  :root{--bg:#f2f3f5;--card:#fff;--ink:#1a1a1a;--muted:#5f6368;--line:#e0e2e6;
+    --brand:#2968c8;--ok:#00a650;--err:#d93025;--warn:#f5a623;--radius:8px}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  header{background:#fff159;padding:14px 20px;display:flex;justify-content:space-between;
+    align-items:center;flex-wrap:wrap;gap:10px}
+  header h1{font-size:17px;margin:0;font-weight:600}
+  nav{display:flex;gap:14px;font-size:13px}
+  nav a{color:#1a1a1a}
+  nav a[aria-current]{font-weight:700;text-decoration:none}
+  #barraContas{display:flex;align-items:center;gap:8px;font-size:13px;flex-wrap:wrap}
+  #barraContas select{padding:5px 8px;font-size:13px;border:1px solid #d8d38a;
+    border-radius:var(--radius);background:#fffdf0;font-family:inherit}
+  #barraContas a{color:#1a1a1a}
+  main{max-width:1000px;margin:0 auto;padding:24px 16px 72px}
+  .painel{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:16px;margin-bottom:20px;display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}
+  .painel label{font-size:13px;font-weight:500;display:block;margin-bottom:4px}
+  input,select,button{font:inherit}
+  input,select{padding:9px 11px;border:1px solid var(--line);border-radius:var(--radius);background:#fff}
+  input:focus,select:focus,button:focus-visible{outline:2px solid var(--brand);outline-offset:1px}
+  button{background:var(--brand);color:#fff;border:0;border-radius:var(--radius);
+    padding:9px 14px;font-weight:600;cursor:pointer}
+  button:hover{filter:brightness(.94)}
+  button.ghost{background:#eef3fd;color:var(--brand)}
+  button.perigo{background:#fce8e6;color:#a1160a}
+  button[disabled]{opacity:.5;cursor:not-allowed}
+  ul{list-style:none;padding:0;margin:0}
+  .item{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:14px;margin-bottom:12px;display:grid;gap:14px;
+    grid-template-columns:72px minmax(200px,1fr) auto auto;align-items:center}
+  .item img{width:72px;height:72px;object-fit:cover;border-radius:6px;background:#f4f4f5}
+  .tituloInput{width:100%;font-weight:500;padding:6px 8px;border:1px solid transparent;border-radius:6px;background:#fafbfc}
+  .tituloInput:hover{border-color:var(--line)}
+  .tituloInput:focus{border-color:var(--brand);background:#fff}
+  .meta{font-size:12px;color:var(--muted);margin-top:4px}
+  .meta a{color:var(--brand)}
+  .campos{display:flex;gap:10px}
+  .campos label{font-size:11px;color:var(--muted);display:block;margin-bottom:3px}
+  .campos input{width:104px;padding:7px 9px}
+  .acoes{display:flex;gap:10px;align-items:center;flex-wrap:nowrap}
+  .statusTexto{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.02em;white-space:nowrap}
+  .statusTexto.active{color:var(--ok)} .statusTexto.paused{color:#9a6400}
+  .statusTexto.closed{color:#777}   .statusTexto.under_review{color:#1f3d8f}
+  .statusTexto.inactive{color:#b23b3b}
+  details.menu{position:relative}
+  details.menu > summary{list-style:none;cursor:pointer;width:32px;height:32px;border-radius:50%;
+    display:grid;place-items:center;font-size:18px;line-height:1;color:var(--muted);user-select:none}
+  details.menu > summary::-webkit-details-marker{display:none}
+  details.menu > summary:hover{background:#eef0f3;color:var(--ink)}
+  details.menu[open] > summary{background:#e6e9ed;color:var(--ink)}
+  details.menu .itens{position:absolute;right:0;top:36px;z-index:30;background:#fff;
+    border:1px solid var(--line);border-radius:var(--radius);box-shadow:0 8px 28px rgba(0,0,0,.14);
+    min-width:190px;padding:5px;display:flex;flex-direction:column}
+  details.menu .itens button{background:none;color:var(--ink);text-align:left;font-weight:400;
+    padding:9px 12px;border-radius:6px;font-size:14px;white-space:nowrap}
+  details.menu .itens button:hover{background:#f2f3f5;filter:none}
+  details.menu .itens button.perigo{color:#a1160a}
+  details.menu .itens button.perigo:hover{background:#fce8e6}
+  details.menu .itens hr{border:0;border-top:1px solid var(--line);margin:5px 0}
+  .btnSalvar{display:none}
+  .item.sujo .btnSalvar{display:inline-block}
+  .selo{font-size:11px;font-weight:700;padding:3px 8px;border-radius:99px;text-transform:uppercase}
+  .selo.active{background:#e6f4ea;color:#14532d}
+  .selo.paused{background:#fff4e0;color:#7a4a00}
+  .selo.closed{background:#f1f1f1;color:#555}
+  .selo.under_review{background:#e8eefc;color:#1f3d8f}
+  .saude{height:4px;border-radius:2px;background:#eee;margin-top:6px;width:120px;overflow:hidden}
+  .saude i{display:block;height:100%;background:var(--ok)}
+  #msg{padding:13px;border-radius:var(--radius);margin-bottom:16px;display:none;white-space:pre-wrap;font-size:14px}
+  #msg.ok{display:block;background:#e6f4ea;color:#14532d;border:1px solid #a6dcb6}
+  #msg.err{display:block;background:#fce8e6;color:#7f1d1d;border:1px solid #f0b3ad}
+  #paginacao{display:flex;gap:10px;align-items:center;justify-content:center;margin-top:20px;font-size:14px}
+  .vazio{background:var(--card);border:1px dashed var(--line);border-radius:var(--radius);
+    padding:40px 20px;text-align:center;color:var(--muted)}
+  #ads{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:16px;margin-bottom:20px;font-size:14px}
+  #ads h2{font-size:14px;margin:0 0 8px}
+  @media (max-width:760px){
+    .item{grid-template-columns:56px 1fr;gap:10px}
+    .item img{width:56px;height:56px}
+    .campos,.acoes{grid-column:1/-1}
+  }
+  dialog{border:0;border-radius:12px;padding:0;width:min(720px,94vw);max-height:92vh;
+    box-shadow:0 20px 60px rgba(0,0,0,.25)}
+  dialog::backdrop{background:rgba(0,0,0,.45)}
+  dialog form{display:flex;flex-direction:column;max-height:92vh}
+  .mCabeca{padding:18px 22px;border-bottom:1px solid var(--line);display:flex;
+    justify-content:space-between;align-items:center;gap:12px}
+  .mCabeca h2{font-size:16px;margin:0}
+  .mCabeca .sub{font-size:12px;color:var(--muted);margin-top:2px}
+  .mCorpo{padding:20px 22px;overflow:auto;flex:1}
+  .mPe{padding:14px 22px;border-top:1px solid var(--line);display:flex;gap:10px;
+    justify-content:flex-end;align-items:center;background:#fafbfc;flex-wrap:wrap}
+  .mPe .esq{margin-right:auto;font-size:12px;color:var(--muted)}
+  .mCorpo label{display:block;font-size:13px;font-weight:500;margin:16px 0 4px}
+  .mCorpo label:first-child{margin-top:0}
+  .mCorpo input,.mCorpo select,.mCorpo textarea{width:100%;padding:9px 11px;
+    border:1px solid var(--line);border-radius:var(--radius);font:inherit;background:#fff}
+  .mCorpo textarea{min-height:110px;resize:vertical}
+  .grade{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+  .grade label{margin-top:0}
+  .secao{border-top:1px solid var(--line);margin-top:22px;padding-top:6px}
+  .secao h3{font-size:13px;color:var(--muted);margin:10px 0 0;text-transform:uppercase;letter-spacing:.03em}
+  .travado{opacity:.55}
+  .nota{font-size:12px;color:var(--muted);margin-top:4px}
+  .nota.alerta{color:#7a4a00;background:#fff4e0;padding:8px 10px;border-radius:6px}
+  .linkAnuncio{display:inline-flex;align-items:center;gap:5px;color:inherit;text-decoration:none;
+    border-radius:4px}
+  /* a.linkAnuncio > svg vence o ".grafico svg{width:100%}" do bloco de análise */
+  a.linkAnuncio > svg{flex:none;width:14px;height:14px;display:inline-block;color:#1b5fc4}
+  .linkAnuncio:hover{text-decoration:underline}
+  .tabPos{width:100%;margin-top:6px;font-size:13px;border-collapse:collapse}
+  .tabPos th{text-align:left;color:var(--muted);font-weight:500;font-size:11px;text-transform:uppercase;
+    padding:4px 6px;border-bottom:1px solid var(--line)}
+  .tabPos td{padding:5px 6px;border-bottom:1px solid #f2f3f5}
+  .tabPos td:nth-child(3){white-space:nowrap}
+  .tabPos tr.este td{font-weight:700;background:#eef3fd}
+  .tabPos tr.seu td{background:#f7f9fc}
+  .tabPos tr.pulo td{color:var(--muted);font-size:12px;padding:3px 6px;background:#fafbfc}
+  .tabPos .marca{margin-left:6px;padding:1px 6px;border-radius:999px;font-size:10px;font-weight:700;
+    text-transform:uppercase;letter-spacing:.03em;background:#e8f0fe;color:#1b5fc4;vertical-align:1px}
+  .tabPos .marca.este{background:#1b5fc4;color:#fff}
+  .barraPos{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:10px}
+  .barraPos .nota{margin:0;flex:1 1 280px}
+  .barraPos button{padding:6px 11px;font-size:13px}
+  .rolagemPos{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .tabPos{min-width:560px;table-layout:fixed}
+  .anuncioPos{display:flex;align-items:center;gap:9px;min-width:0}
+  .anuncioPos img{width:36px;height:36px;object-fit:contain;border-radius:4px;background:#fff;
+    border:1px solid var(--line);flex:none}
+  .textoPos{min-width:0;flex:1}
+  .metaPos{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .acoesTermo{display:flex;align-items:center;gap:8px;margin-left:auto;flex-wrap:wrap}
+  .textoPos .linkAnuncio{display:flex;max-width:100%}
+  .textoPos .linkAnuncio > span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .metaPos{font-size:11px;color:var(--muted);font-weight:400;margin-top:1px}
+  .difPos{display:block;font-size:11px;font-weight:400;color:var(--muted);white-space:normal}
+  .tabPos tr.pulo button{background:none;color:#1b5fc4;padding:2px 0;font-size:12px;font-weight:600;
+    border-radius:4px}
+  .tabPos tr.pulo button:hover{text-decoration:underline;filter:none}
+  .linkAnuncio:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+  #mFotos{list-style:none;padding:0;margin:10px 0 0;display:grid;
+    grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:10px}
+  #mFotos li{position:relative;aspect-ratio:1;border:1px solid var(--line);
+    border-radius:6px;overflow:hidden;background:#fff}
+  #mFotos img{width:100%;height:100%;object-fit:cover;display:block}
+  #mFotos .barra{position:absolute;left:0;right:0;bottom:0;display:flex;
+    background:rgba(0,0,0,.62)}
+  #mFotos .barra button{flex:1;background:none;color:#fff;border:0;padding:4px 0;
+    font-size:13px;cursor:pointer;font-weight:400}
+  #mFotos .barra button:hover{background:rgba(255,255,255,.18)}
+  #mFotos .capa{position:absolute;top:0;left:0;background:var(--brand);color:#fff;
+    font-size:10px;padding:2px 6px;border-bottom-right-radius:6px;font-weight:700}
+  #mSolta{margin-top:10px;border:2px dashed var(--line);border-radius:var(--radius);
+    background:#fafbfc;padding:18px;text-align:center;cursor:pointer;font-size:13px}
+  #mSolta:hover,#mSolta.dentro{border-color:var(--brand);background:#f5f9ff}
+  #mErro{margin-top:14px;padding:12px;border-radius:var(--radius);display:none;
+    background:#fce8e6;color:#7f1d1d;border:1px solid #f0b3ad;font-size:13px;white-space:pre-wrap}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:10px;margin:0 0 18px}
+  .kpi{background:#fafbfc;border:1px solid var(--line);border-radius:var(--radius);padding:12px}
+  .kpi .rot{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
+  .kpi .val{font-size:20px;font-weight:600;margin-top:3px;line-height:1.2}
+  .kpi .sub{font-size:11px;color:var(--muted);margin-top:2px}
+  .kpi.destaque .val{color:var(--ok)}
+  .kpi.aviso .val{color:var(--warn)}
+  .grafico{background:#fafbfc;border:1px solid var(--line);border-radius:var(--radius);padding:14px;margin-bottom:18px}
+  .grafico h4{margin:0 0 10px;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
+  .grafico svg{width:100%;height:110px;display:block}
+  .listaDados{list-style:none;padding:0;margin:0}
+  .listaDados li{display:flex;justify-content:space-between;gap:12px;padding:7px 0;
+    border-bottom:1px solid var(--line);font-size:14px}
+  .listaDados li:last-child{border-bottom:0}
+  .listaDados .rot{color:var(--muted)}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .chips span{background:#eef3fd;color:var(--brand);font-size:12px;padding:4px 9px;border-radius:99px}
+  .colunas{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:18px}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Meus anúncios</h1>
+    <nav><a href="/">Publicar</a><a href="/anuncios.html" aria-current="page">Meus anúncios</a><a href="/navegador.html">Navegador</a><a href="/configuracao.html">Configuração</a></nav>
+  </div>
+  <div id="barraContas">
+    <label for="selConta" id="rotuloConta">Conta</label>
+    <select id="selConta" aria-describedby="rotuloConta"></select>
+    <a href="/auth" id="addConta">+ conectar outra</a>
+  </div>
+</header>
+
+<main>
+  <div id="msg" role="status" aria-live="polite"></div>
+
+  <section id="ads" hidden>
+    <h2>Mercado Ads</h2>
+    <div id="adsCorpo"></div>
+  </section>
+
+  <div class="painel">
+    <div>
+      <label for="fStatus">Situação</label>
+      <select id="fStatus">
+        <option value="">Todas</option>
+        <option value="active">Ativos</option>
+        <option value="paused">Pausados</option>
+        <option value="closed">Encerrados</option>
+        <option value="under_review">Em revisão</option>
+      </select>
+    </div>
+    <div style="flex:1 1 220px">
+      <label for="fBusca">Buscar no título</label>
+      <input id="fBusca" placeholder="iMac, camiseta…">
+    </div>
+    <div>
+      <label for="fOrdem">Ordenar por</label>
+      <select id="fOrdem">
+        <option value="last_updated_desc">Atualizados recentemente</option>
+        <option value="sold_quantity_desc">Mais vendidos</option>
+        <option value="sold_quantity_asc">Menos vendidos</option>
+        <option value="price_desc">Maior preço</option>
+        <option value="price_asc">Menor preço</option>
+        <option value="available_quantity_desc">Maior estoque</option>
+        <option value="available_quantity_asc">Menor estoque</option>
+        <option value="start_time_desc">Mais novos</option>
+        <option value="stop_time_asc">Padrão do Mercado Livre</option>
+      </select>
+    </div>
+    <button id="btnFiltrar">Filtrar</button>
+    <span id="total" style="font-size:13px;color:var(--muted)"></span>
+  </div>
+
+  <ul id="lista"></ul>
+  <div id="paginacao" hidden>
+    <button class="ghost" id="ant">← anteriores</button>
+    <span id="pagina"></span>
+    <button class="ghost" id="prox">próximos →</button>
+  </div>
+</main>
+
+<dialog id="modalAn" aria-labelledby="anTitulo">
+  <form method="dialog">
+    <div class="mCabeca">
+      <div>
+        <h2 id="anTitulo">Análise do anúncio</h2>
+        <div class="sub" id="anSub"></div>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;margin-left:auto">
+        <label for="anDias" class="sub" style="margin:0">Período</label>
+        <select id="anDias" style="padding:6px 9px;border:1px solid var(--line);border-radius:8px;font:inherit;font-size:13px">
+          <option value="30">30 dias</option>
+          <option value="60">60 dias</option>
+          <option value="90">90 dias</option>
+          <option value="150">150 dias</option>
+        </select>
+        <button type="button" class="ghost" id="anFechar" aria-label="Fechar">✕</button>
+      </div>
+    </div>
+    <div class="mCorpo" id="anCorpo"></div>
+    <div class="mPe">
+      <span class="esq" id="anRodape"></span>
+      <button type="button" id="anOk">Fechar</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="modal" aria-labelledby="mTitulo">
+  <form id="formEdit">
+    <div class="mCabeca">
+      <div>
+        <h2 id="mTitulo">Editar anúncio</h2>
+        <div class="sub" id="mSub"></div>
+      </div>
+      <button type="button" class="ghost" id="mFechar" aria-label="Fechar">✕</button>
+    </div>
+
+    <div class="mCorpo">
+      <label for="mTituloCampo">Título <span class="nota" style="display:inline">(máx. 60)</span></label>
+      <input id="mTituloCampo" maxlength="60" required>
+
+      <div class="grade" style="margin-top:16px">
+        <div>
+          <label for="mPreco">Preço (R$)</label>
+          <input id="mPreco" type="number" min="0.01" step="0.01">
+        </div>
+        <div>
+          <label for="mEstoque">Estoque</label>
+          <input id="mEstoque" type="number" min="0" step="1">
+        </div>
+        <div>
+          <label for="mCondicao">Condição</label>
+          <select id="mCondicao">
+            <option value="new">Novo</option>
+            <option value="used">Usado</option>
+            <option value="not_specified">Não especificada</option>
+          </select>
+        </div>
+        <div>
+          <label for="mTipo">Tipo de anúncio</label>
+          <select id="mTipo"></select>
+        </div>
+      </div>
+      <div class="nota" id="mTravaNota" hidden></div>
+
+      <div class="secao"><h3>Fotos</h3></div>
+      <ul id="mFotos"></ul>
+      <div id="mSolta" tabindex="0" role="button">
+        Arraste fotos aqui, clique ou cole (Ctrl+V) · mín. 500px no maior lado
+      </div>
+      <input type="file" id="mArquivo" accept="image/jpeg,image/png,image/webp,image/gif" multiple hidden>
+
+      <div class="secao"><h3>Ficha técnica</h3></div>
+      <div id="mAttrs"><p class="nota">carregando…</p></div>
+
+      <div class="secao"><h3>Descrição</h3></div>
+      <label for="mDescricao" class="sr">Descrição</label>
+      <textarea id="mDescricao" placeholder="Detalhes, medidas, composição, garantia…"></textarea>
+
+      <div class="secao"><h3>Outros</h3></div>
+      <div class="grade">
+        <div>
+          <label for="mSku">SKU interno</label>
+          <input id="mSku" maxlength="60" placeholder="opcional">
+        </div>
+        <div>
+          <label for="mVideo">Vídeo (id do YouTube)</label>
+          <input id="mVideo" placeholder="opcional">
+        </div>
+        <div>
+          <label for="mFrete">Envio</label>
+          <select id="mFrete">
+            <option value="me2">Mercado Envios</option>
+            <option value="not_specified">Combinar com o comprador</option>
+          </select>
+        </div>
+      </div>
+      <div style="display:flex;gap:18px;margin-top:12px;flex-wrap:wrap">
+        <label style="display:flex;align-items:center;gap:7px;margin:0;font-weight:400">
+          <input type="checkbox" id="mFreteGratis" style="width:auto"> Frete grátis</label>
+        <label style="display:flex;align-items:center;gap:7px;margin:0;font-weight:400">
+          <input type="checkbox" id="mRetirada" style="width:auto"> Aceita retirada em mãos</label>
+      </div>
+
+      <div id="mErro" role="alert"></div>
+    </div>
+
+    <div class="mPe">
+      <span class="esq" id="mRodape"></span>
+      <button type="button" class="ghost" id="mCancelar">Cancelar</button>
+      <button type="submit" id="mSalvar">Salvar alterações</button>
+    </div>
+  </form>
+</dialog>
+
+
+<script>
+const $ = (id) => document.getElementById(id);
+const msg = $('msg');
+const ROTULO = { active:'ativo', paused:'pausado', closed:'encerrado',
+  under_review:'em revisão', inactive:'inativo', payment_required:'aguardando pagamento' };
+const https = (u) => (u || '').replace(/^http:\/\//i, 'https://');
+const brl = new Intl.NumberFormat('pt-BR', { style:'currency', currency:'BRL' });
+function aviso(t, tipo){ msg.className = tipo; msg.textContent = t; window.scrollTo({top:0,behavior:'smooth'}); }
+
+async function api(path, opts){
+  const r = await fetch(path, opts);
+  if(r.status === 401 && !path.includes('/accounts')){
+    const j = await r.json().catch(()=>({}));
+    if(/Sessão/.test(j.error||'')){ location.href = '/login'; return; }
+    throw new Error(j.error || 'não autorizado');
+  }
+  const j = await r.json();
+  if(!r.ok) throw new Error([j.error, j.detail && JSON.stringify(j.detail)].filter(Boolean).join('\n'));
+  return j;
+}
+
+// ---------- contas ----------
+const selConta = $('selConta');
+async function carregarContas(){
+  try{
+    const { ativa, contas } = await api('/api/accounts');
+    selConta.innerHTML = '';
+    if(!contas.length){
+      selConta.hidden = true; $('rotuloConta').textContent = 'nenhuma conta —';
+      $('addConta').textContent = 'conectar Mercado Livre →'; return;
+    }
+    selConta.hidden = false;
+    for(const c of contas){
+      const o = document.createElement('option');  // textContent: nickname vem do ML
+      o.value = c.ml_user_id;
+      o.textContent = `${c.nickname} · ${c.site_id}`;
+      o.selected = c.ml_user_id === ativa;
+      selConta.appendChild(o);
+    }
+  }catch{ selConta.hidden = true; }
+}
+selConta.onchange = async () => {
+  await api('/api/accounts/active', { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ ml_user_id: Number(selConta.value) }) });
+  location.reload();
+};
+
+// ---------- Mercado Ads ----------
+async function carregarAds(){
+  try{
+    const a = await api('/api/ads/status');
+    $('ads').hidden = false;
+    $('adsCorpo').textContent = a.habilitado
+      ? `Anunciante ativo. ${(a.advertisers||[]).length} advertiser(s) nesta conta.`
+      : a.motivo;
+    $('adsCorpo').style.color = a.habilitado ? 'var(--ok)' : 'var(--muted)';
+  }catch(e){ $('ads').hidden = false; $('adsCorpo').textContent = 'Não consultou o Ads: ' + e.message; }
+}
+
+// ---------- anúncios ----------
+let offset = 0, limite = 20, total = 0;
+
+function cartao(it){
+  const li = document.createElement('li');
+  li.className = 'item';
+  // Medido na API: o que trava a edição não é o anúncio estar pausado.
+  //   family_name presente -> "You cannot modify the title if the item has a family_name"
+  //   variações            -> preço e estoque vivem na variação, não no item
+  const encerrado = it.status === 'closed';
+  const precoEditavel = !encerrado && !it.tem_variacoes;
+  const tituloEditavel = !encerrado && !it.tem_familia;
+
+  const img = document.createElement('img');
+  img.src = https(it.secure_thumbnail || it.thumbnail);
+  img.alt = ''; img.loading = 'lazy';
+
+  const info = document.createElement('div');
+  const tituloInput = document.createElement('input');
+  tituloInput.className = 'tituloInput'; tituloInput.maxLength = 60;
+  tituloInput.value = it.title || '';                      // value: título vem do ML
+  tituloInput.disabled = !tituloEditavel;
+  if(!tituloEditavel) tituloInput.title = encerrado
+    ? 'Anúncio encerrado: o Mercado Livre não aceita mais alterações.'
+    : 'Este anúncio pertence a uma família de produtos — o Mercado Livre não deixa mudar o título por aqui.';
+  tituloInput.setAttribute('aria-label', 'Título do anúncio ' + it.id);
+
+  const meta = document.createElement('div');
+  meta.className = 'meta';
+  meta.textContent = [it.id, it.listing_type_id,
+    `${it.sold_quantity ?? 0} vendido(s)`,
+    it.visitas_30d != null ? `${it.visitas_30d} visita(s)/30d` : null,
+  ].filter(Boolean).join(' · ');
+  const abrir = document.createElement('a');
+  abrir.href = it.permalink || '#'; abrir.target = '_blank'; abrir.rel = 'noopener';
+  abrir.textContent = ' · abrir ↗'; abrir.style.whiteSpace = 'nowrap';
+  meta.appendChild(abrir);
+  info.append(tituloInput, meta);
+
+  if(typeof it.health === 'number'){
+    const b = document.createElement('div'); b.className = 'saude';
+    const i = document.createElement('i'); i.style.width = Math.round(it.health*100) + '%';
+    if(it.health < 0.5) i.style.background = 'var(--err)';
+    else if(it.health < 0.8) i.style.background = 'var(--warn)';
+    b.appendChild(i); b.title = `Qualidade do anúncio: ${Math.round(it.health*100)}%`;
+    info.appendChild(b);
+  }
+
+  const campos = document.createElement('div');
+  campos.className = 'campos';
+  const preco = campo('Preço', 'number', it.price, '0.01');
+  const estoque = campo('Estoque', 'number', it.available_quantity, '1');
+  preco.input.disabled = estoque.input.disabled = !precoEditavel;
+  if(!precoEditavel){
+    const t = encerrado
+      ? 'Anúncio encerrado: o Mercado Livre não permite mais alterações.'
+      : 'Este anúncio tem variações: preço e estoque são definidos em cada variação, não no anúncio.';
+    preco.input.title = estoque.input.title = t;
+    preco.wrap.style.opacity = estoque.wrap.style.opacity = '.55';
+  }
+  campos.append(preco.wrap, estoque.wrap);
+
+  const acoes = document.createElement('div');
+  acoes.className = 'acoes';
+
+  const st = document.createElement('span');
+  st.className = 'statusTexto ' + it.status;
+  st.textContent = ROTULO[it.status] || it.status;
+  acoes.appendChild(st);
+
+  // Salvar só aparece depois que algo muda — mantém a linha limpa.
+  const salvar = botao('Salvar', '', async () => {
+    const mudancas = {};
+    const t = tituloInput.value.trim();
+    if(tituloEditavel && t && t !== it.title) mudancas.title = t;
+    if(precoEditavel){
+      if(Number(preco.input.value) !== it.price) mudancas.price = Number(preco.input.value);
+      if(Number(estoque.input.value) !== it.available_quantity) mudancas.available_quantity = Number(estoque.input.value);
+    }
+    if(!Object.keys(mudancas).length) return aviso('Nada mudou nesse anúncio.', 'err');
+    await mandar(it, mudancas, `${it.id} atualizado.`);
+  });
+  salvar.classList.add('btnSalvar');
+  [tituloInput, preco.input, estoque.input].forEach(el =>
+    el.addEventListener('input', () => li.classList.add('sujo')));
+  acoes.appendChild(salvar);
+
+  const menu = document.createElement('details');
+  menu.className = 'menu';
+  const alca = document.createElement('summary');
+  alca.textContent = '⋮';
+  alca.setAttribute('aria-label', 'Ações do anúncio ' + it.id);
+  alca.title = 'Ações';
+  const itens = document.createElement('div');
+  itens.className = 'itens';
+
+  const opcao = (texto, fn, classe) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.textContent = texto; if(classe) b.className = classe;
+    b.onclick = async () => { menu.open = false; await fn(); };
+    return b;
+  };
+  const separador = () => document.createElement('hr');
+
+  itens.appendChild(opcao('Análise do anúncio', () => abrirAnalytics(it.id)));
+  if(it.status !== 'closed') itens.appendChild(opcao('Editar', () => abrirModal(it.id)));
+  if(it.status === 'paused' || it.status === 'inactive')
+    itens.appendChild(opcao('Ativar', () => mandar(it, { status:'active' }, `${it.id} ativado.`)));
+  if(it.status === 'active')
+    itens.appendChild(opcao('Pausar', () => mandar(it, { status:'paused' }, `${it.id} pausado.`)));
+  itens.appendChild(opcao('Abrir no Mercado Livre', () => window.open(it.permalink, '_blank', 'noopener')));
+  if(it.status !== 'closed'){
+    itens.appendChild(separador());
+    itens.appendChild(opcao('Encerrar', () => {
+      // encerrar é definitivo no ML: não dá para reativar depois
+      if(!confirm(`Encerrar "${it.title}" de vez?\n\nO Mercado Livre NÃO permite reativar um anúncio encerrado. Para tirar do ar temporariamente, use Pausar.`)) return;
+      return mandar(it, { status:'closed' }, `${it.id} encerrado.`);
+    }, 'perigo'));
+  }
+
+  menu.append(alca, itens);
+  acoes.appendChild(menu);
+
+  li.append(img, info, campos, acoes);
+  return li;
+}
+
+function campo(rotulo, tipo, valor, passo){
+  const wrap = document.createElement('div');
+  const l = document.createElement('label'); l.textContent = rotulo;
+  const input = document.createElement('input');
+  input.type = tipo; input.value = valor ?? ''; input.step = passo; input.min = tipo==='number' ? '0' : '';
+  l.htmlFor = input.id = 'c' + Math.random().toString(36).slice(2);
+  wrap.append(l, input);
+  return { wrap, input };
+}
+function botao(texto, classe, fn){
+  const b = document.createElement('button');
+  b.type = 'button'; b.textContent = texto; if(classe) b.className = classe;
+  b.onclick = async () => { b.disabled = true; try{ await fn(); } finally { b.disabled = false; } };
+  return b;
+}
+
+async function mandar(it, mudancas, sucesso){
+  try{
+    await api('/api/items/' + it.id, { method:'PUT', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(mudancas) });
+    aviso(sucesso, 'ok');
+    carregar();
+  }catch(e){ aviso(`Não alterou ${it.id}:\n${e.message}`, 'err'); }
+}
+
+async function carregar(){
+  $('lista').innerHTML = '<li class="vazio">carregando…</li>';
+  try{
+    const qs = new URLSearchParams({ offset, limit: limite });
+    if($('fStatus').value) qs.set('status', $('fStatus').value);
+    if($('fBusca').value.trim()) qs.set('q', $('fBusca').value.trim());
+    qs.set('sort', $('fOrdem').value);
+    const r = await api('/api/items?' + qs);
+    total = r.total;
+    $('total').textContent = `${total} anúncio(s)`;
+    $('lista').innerHTML = '';
+    if(!r.itens.length){
+      $('lista').innerHTML = '<li class="vazio">Nenhum anúncio com esse filtro.</li>';
+      $('paginacao').hidden = true; return;
+    }
+    r.itens.forEach(it => $('lista').appendChild(cartao(it)));
+    $('paginacao').hidden = total <= limite;
+    $('pagina').textContent = `${offset+1}–${Math.min(offset+limite, total)} de ${total}`;
+    $('ant').disabled = offset === 0;
+    $('prox').disabled = offset + limite >= total;
+  }catch(e){
+    $('lista').innerHTML = '';
+    aviso('Não listou: ' + e.message, 'err');
+  }
+}
+
+document.addEventListener('click', (e) => {
+  document.querySelectorAll('details.menu[open]').forEach(d => { if(!d.contains(e.target)) d.open = false; });
+});
+
+$('btnFiltrar').onclick = () => { offset = 0; carregar(); };
+$('fBusca').onkeydown = (e) => { if(e.key === 'Enter'){ offset = 0; carregar(); } };
+$('fStatus').onchange = () => { offset = 0; carregar(); };
+$('fOrdem').onchange = () => { offset = 0; carregar(); };
+$('ant').onclick = () => { offset = Math.max(0, offset - limite); carregar(); };
+$('prox').onclick = () => { offset += limite; carregar(); };
+
+
+// ---------- modal de edição ----------
+const modal = $('modal');
+let ed = null; // { it, fotos:[{id,thumb}], attrs:[], descricao, precoEditavel, tituloEditavel }
+// Abrir uma modal enquanto a anterior ainda busca fazia a resposta atrasada escrever
+// na caixa já limpa — a ficha aparecia duas vezes, de categorias diferentes.
+let geracao = 0;
+
+function mErro(t){ const e = $('mErro'); e.style.display = t ? 'block' : 'none'; e.textContent = t || ''; }
+
+async function abrirModal(id){
+  const meu = ++geracao;
+  mErro(''); $('mSub').textContent = 'carregando…';
+  $('mAttrs').innerHTML = '<p class="nota">carregando…</p>';
+  modal.showModal();
+  try{
+    const it = await api('/api/items/' + id);
+    if(meu !== geracao) return;                 // o usuário já abriu outro anúncio
+    const encerrado = it.status === 'closed';
+    const precoEditavel = !encerrado && !it.tem_variacoes;
+    const tituloEditavel = !encerrado && !it.tem_familia;
+    ed = {
+      it, precoEditavel, tituloEditavel,
+      fotos: (it.pictures || []).map(p => ({ id: p.id, thumb: https(p.secure_url || p.url) })),
+      descricao: it.descricao || '',
+    };
+
+    $('mSub').textContent = `${it.id} · ${({active:'ativo',paused:'pausado',closed:'encerrado',under_review:'em revisão'})[it.status] || it.status}`
+      + ` · ${it.sold_quantity ?? 0} vendido(s)`;
+    $('mTituloCampo').value = it.title || '';
+    $('mPreco').value = it.price ?? '';
+    $('mEstoque').value = it.available_quantity ?? '';
+    $('mCondicao').value = it.condition || 'not_specified';
+    // "refurbished" existe em algumas categorias e é recusado em outras (400).
+    // Quem manda é settings.item_conditions da categoria.
+    api('/api/category?id=' + it.category_id).then(cat => {
+      if(meu !== geracao) return;
+      const ok = cat.settings?.item_conditions || ['new','used','not_specified'];
+      const sel = $('mCondicao');
+      const rotulos = { new:'Novo', used:'Usado', not_specified:'Não especificada', refurbished:'Recondicionado' };
+      sel.innerHTML = '';
+      for(const v of ok){
+        const o = document.createElement('option');
+        o.value = v; o.textContent = rotulos[v] || v;
+        o.selected = v === it.condition;
+        sel.appendChild(o);
+      }
+    }).catch(() => {});
+    $('mSku').value = it.seller_custom_field || '';
+    $('mVideo').value = it.video_id || '';
+    $('mFrete').value = it.shipping?.mode === 'me2' ? 'me2' : 'not_specified';
+    $('mFreteGratis').checked = !!it.shipping?.free_shipping;
+    $('mRetirada').checked = !!it.shipping?.local_pick_up;
+    $('mDescricao').value = ed.descricao;
+
+    // Medido na API: o bloqueio não vem de estar pausado, vem destas duas condições.
+    $('mPreco').disabled = $('mEstoque').disabled = !precoEditavel;
+    $('mPreco').parentElement.classList.toggle('travado', !precoEditavel);
+    $('mEstoque').parentElement.classList.toggle('travado', !precoEditavel);
+    $('mTituloCampo').disabled = !tituloEditavel;
+
+    const avisos = [];
+    if(encerrado) avisos.push('Anúncio encerrado: o Mercado Livre não aceita mais nenhuma alteração.');
+    if(it.tem_variacoes) avisos.push('Este anúncio tem variações — preço e estoque são definidos em cada variação, não aqui.');
+    if(it.tem_familia) avisos.push('Este anúncio pertence a uma família de produtos — o Mercado Livre recusa mudança de título.');
+    const nota = $('mTravaNota');
+    nota.hidden = !avisos.length;
+    nota.className = 'nota alerta';
+    nota.textContent = avisos.join(' ');
+
+    $('mSalvar').disabled = encerrado;
+    pintarFotosModal();
+    carregarTipos(it, meu);
+    carregarAttrs(it, meu);
+  }catch(e){ mErro('Não abriu o anúncio: ' + e.message); $('mSub').textContent = ''; }
+}
+
+async function carregarTipos(it, meu){
+  const sel = $('mTipo');
+  sel.innerHTML = '';
+  const atual = document.createElement('option');
+  atual.value = it.listing_type_id; atual.textContent = it.listing_type_id + ' (atual)';
+  sel.appendChild(atual);
+  try{
+    const ups = await api(`/api/items/${it.id}/upgrades`);
+    if(meu !== geracao) return;
+    for(const u of (ups || [])){
+      const o = document.createElement('option');
+      o.value = u.id || u; o.textContent = (u.id || u) + ' (upgrade)';
+      sel.appendChild(o);
+    }
+    sel.disabled = !(ups || []).length;
+    if(!(ups || []).length) sel.title = 'O Mercado Livre não oferece troca de tipo para este anúncio.';
+  }catch{ sel.disabled = true; }
+}
+
+// Um controle por tipo. number_unit precisa do par valor+unidade: o ML espera
+// "16 GB" num campo só, mas pedir isso ao usuário digitado é pedir erro.
+function controleAtributo(a, valorAtual){
+  const wrap = document.createElement('div');
+  const lab = document.createElement('label');
+  lab.htmlFor = 'ma_' + a.id;
+  lab.textContent = a.name + (a.obrigatorio ? ' *' : '');
+  wrap.appendChild(lab);
+
+  let campo;
+  if(a.value_type === 'boolean' || (a.values.length && a.values.length <= 40)){
+    campo = document.createElement('select');
+    const vazio = document.createElement('option');
+    vazio.value = ''; vazio.textContent = '— selecione —';
+    campo.appendChild(vazio);
+    for(const v of a.values){                       // textContent: vem do ML
+      const o = document.createElement('option'); o.textContent = v; campo.appendChild(o);
+    }
+  }else{
+    campo = document.createElement('input');
+    if(a.value_type === 'number' || a.value_type === 'number_unit') campo.inputMode = 'decimal';
+    if(a.values.length){                            // muitas opções: sugere sem travar
+      const dl = document.createElement('datalist');
+      dl.id = 'dl_' + a.id;
+      for(const v of a.values){ const o=document.createElement('option'); o.value=v; dl.appendChild(o); }
+      wrap.appendChild(dl);
+      campo.setAttribute('list', dl.id);
+    }
+  }
+  campo.id = 'ma_' + a.id;
+  campo.dataset.attr = a.id;
+  campo.dataset.tipo = a.value_type;
+
+  if(a.value_type === 'number_unit' && a.unidades.length){
+    const linha = document.createElement('div');
+    linha.style.cssText = 'display:flex;gap:6px';
+    const un = document.createElement('select');
+    un.style.cssText = 'width:auto;flex:0 0 auto';
+    un.dataset.unidadeDe = a.id;
+    for(const u of a.unidades){ const o=document.createElement('option'); o.textContent=u; un.appendChild(o); }
+    // "16 GB" -> valor 16, unidade GB
+    const m = /^([\d.,]+)\s*(\S+)?$/.exec(String(valorAtual || '').trim());
+    campo.value = m ? m[1] : '';
+    if(m && m[2] && a.unidades.includes(m[2])) un.value = m[2];
+    else if(a.unidade_padrao) un.value = a.unidade_padrao;
+    linha.append(campo, un);
+    wrap.appendChild(linha);
+  }else{
+    campo.value = valorAtual || '';
+    wrap.appendChild(campo);
+  }
+
+  if(a.dica){
+    const d = document.createElement('div');
+    d.className = 'nota'; d.textContent = a.dica;
+    wrap.appendChild(d);
+  }
+  return wrap;
+}
+
+function lerAtributos(raiz){
+  const out = {};
+  raiz.querySelectorAll('[data-attr]').forEach(el => {
+    const v = el.value.trim();
+    if(!v) return;
+    const un = raiz.querySelector(`[data-unidade-de="${el.dataset.attr}"]`);
+    out[el.dataset.attr] = un ? `${v} ${un.value}` : v;
+  });
+  return out;
+}
+
+async function carregarAttrs(it, meu){
+  const caixa = $('mAttrs');
+  caixa.innerHTML = '';
+  try{
+    const cat = await api('/api/category?id=' + it.category_id);
+    if(meu !== geracao) return;
+    const atuais = Object.fromEntries((it.attributes || []).map(a => [a.id, a.value_name]));
+    ed.attrs = cat.attributes;
+
+    const obrig = cat.attributes.filter(a => a.obrigatorio);
+    const resto = cat.attributes.filter(a => !a.obrigatorio);
+
+    if(obrig.length){
+      const g = document.createElement('div'); g.className = 'grade';
+      for(const a of obrig) g.appendChild(controleAtributo(a, atuais[a.id]));
+      caixa.appendChild(g);
+      const falta = obrig.filter(a => !atuais[a.id]).length;
+      if(falta){
+        const p = document.createElement('p');
+        p.className = 'nota alerta';
+        p.textContent = `${falta} campo(s) obrigatório(s) em branco — é isso que derruba a exposição do anúncio.`;
+        caixa.appendChild(p);
+      }
+    }
+
+    if(resto.length){
+      const vazios = resto.filter(a => !atuais[a.id]).length;
+      const det = document.createElement('details');
+      det.style.marginTop = '16px';
+      const sum = document.createElement('summary');
+      sum.style.cssText = 'cursor:pointer;font-size:13px;font-weight:500;padding:9px 0;color:var(--brand)';
+      sum.textContent = `Ficha técnica completa — ${resto.length} campos, ${vazios} em branco`;
+      det.appendChild(sum);
+      const g2 = document.createElement('div');
+      g2.className = 'grade'; g2.style.marginTop = '10px';
+      for(const a of resto) g2.appendChild(controleAtributo(a, atuais[a.id]));
+      det.appendChild(g2);
+      caixa.appendChild(det);
+    }
+
+    // Garantia é sale_term, não atributo. O campo "warranty" do item é derivado
+    // destes dois ("Garantia de fábrica: 12 meses"), por isso não é editável aqui.
+    if((it.termos || []).length){
+      const h = document.createElement('div'); h.className = 'secao';
+      const t = document.createElement('h3'); t.textContent = 'Garantia';
+      h.appendChild(t); caixa.appendChild(h);
+      const g3 = document.createElement('div'); g3.className = 'grade';
+      for(const termo of it.termos){
+        const w = controleAtributo({
+          ...termo, values: termo.values || [], unidades: termo.unidades || [],
+          obrigatorio: false, dica: null,
+        }, termo.valor);
+        const campo = w.querySelector('[data-attr]');
+        campo.dataset.termo = campo.dataset.attr;
+        delete campo.dataset.attr;
+        g3.appendChild(w);
+      }
+      caixa.appendChild(g3);
+    }
+  }catch(e){
+    caixa.innerHTML = '';
+    const p = document.createElement('p');
+    p.className = 'nota'; p.textContent = 'Não carregou a ficha técnica: ' + e.message;
+    caixa.appendChild(p);
+  }
+}
+
+function pintarFotosModal(){
+  const ul = $('mFotos'); ul.innerHTML = '';
+  ed.fotos.forEach((f, i) => {
+    const li = document.createElement('li');
+    const img = document.createElement('img'); img.src = f.thumb; img.alt = `Foto ${i+1}`; img.loading = 'lazy';
+    li.appendChild(img);
+    if(i === 0){ const c = document.createElement('span'); c.className='capa'; c.textContent='CAPA'; li.appendChild(c); }
+    const barra = document.createElement('div'); barra.className = 'barra';
+    barra.append(
+      btnFoto('←', 'Mover para a esquerda', i === 0, () => { [ed.fotos[i-1], ed.fotos[i]] = [ed.fotos[i], ed.fotos[i-1]]; pintarFotosModal(); }),
+      btnFoto('✕', 'Remover foto', false, () => { ed.fotos.splice(i,1); pintarFotosModal(); }),
+      btnFoto('→', 'Mover para a direita', i === ed.fotos.length-1, () => { [ed.fotos[i+1], ed.fotos[i]] = [ed.fotos[i], ed.fotos[i+1]]; pintarFotosModal(); }),
+    );
+    li.appendChild(barra); ul.appendChild(li);
+  });
+}
+function btnFoto(txt, rotulo, off, fn){
+  const b = document.createElement('button');
+  b.type = 'button'; b.textContent = txt; b.title = rotulo;
+  b.setAttribute('aria-label', rotulo); b.disabled = off;
+  if(off) b.style.opacity = '.3';
+  b.onclick = fn;
+  return b;
+}
+
+async function medirImg(arq){
+  try{ const b = await createImageBitmap(arq); const r = { w:b.width, h:b.height, ok: Math.max(b.width,b.height) >= 500 }; b.close?.(); return r; }
+  catch{ return { ok:true }; }
+}
+async function subirFotos(lista){
+  for(const arq of [...lista].filter(f => f.type.startsWith('image/'))){
+    const d = await medirImg(arq);
+    if(!d.ok){ mErro(`"${arq.name}" tem ${d.w}×${d.h}px. O Mercado Livre exige no mínimo 500px no maior lado.`); continue; }
+    try{
+      const r = await api('/api/pictures', { method:'POST', headers:{'Content-Type':arq.type}, body:arq });
+      ed.fotos.push({ id:r.id, thumb:r.thumb || URL.createObjectURL(arq) });
+      mErro(''); pintarFotosModal();
+    }catch(e){ mErro(`Não enviou "${arq.name}": ${e.message}`); }
+  }
+}
+$('mSolta').onclick = () => $('mArquivo').click();
+$('mSolta').onkeydown = (e) => { if(e.key==='Enter'||e.key===' '){ e.preventDefault(); $('mArquivo').click(); } };
+$('mArquivo').onchange = (e) => { subirFotos(e.target.files); e.target.value = ''; };
+['dragenter','dragover'].forEach(ev => $('mSolta').addEventListener(ev, e => { e.preventDefault(); $('mSolta').classList.add('dentro'); }));
+['dragleave','drop'].forEach(ev => $('mSolta').addEventListener(ev, e => { e.preventDefault(); $('mSolta').classList.remove('dentro'); }));
+$('mSolta').addEventListener('drop', e => subirFotos(e.dataTransfer.files));
+modal.addEventListener('paste', e => {
+  const imgs = [...(e.clipboardData?.files || [])].filter(f => f.type.startsWith('image/'));
+  if(imgs.length){ e.preventDefault(); subirFotos(imgs); }
+});
+
+const fecharModal = () => { modal.close(); ed = null; };
+$('mFechar').onclick = fecharModal;
+$('mCancelar').onclick = fecharModal;
+
+$('formEdit').onsubmit = async (ev) => {
+  ev.preventDefault();
+  if(!ed) return;
+  const { it, precoEditavel, tituloEditavel } = ed;
+  const b = $('mSalvar'); b.disabled = true; mErro('');
+  $('mRodape').textContent = 'salvando…';
+
+  // Só o que mudou vai no PUT: mandar campo intocado pode esbarrar numa trava do ML.
+  const mud = {};
+  const t = $('mTituloCampo').value.trim();
+  if(tituloEditavel && t !== it.title) mud.title = t;
+  if(precoEditavel){
+    if(Number($('mPreco').value) !== it.price) mud.price = Number($('mPreco').value);
+    if(Number($('mEstoque').value) !== it.available_quantity) mud.available_quantity = Number($('mEstoque').value);
+  }
+  if($('mCondicao').value !== it.condition) mud.condition = $('mCondicao').value;
+  if($('mSku').value.trim() !== (it.seller_custom_field || '')) mud.seller_custom_field = $('mSku').value.trim();
+  if($('mVideo').value.trim() !== (it.video_id || '')) mud.video_id = $('mVideo').value.trim();
+
+  const fotosAgora = ed.fotos.map(f => f.id).join(',');
+  if(fotosAgora !== (it.pictures || []).map(p => p.id).join(',')) mud.picture_ids = ed.fotos.map(f => f.id);
+
+  const attrsAgora = lerAtributos($('mAttrs'));
+  const attrsAntes = Object.fromEntries((it.attributes || []).filter(a => a.value_name).map(a => [a.id, a.value_name]));
+  if(ed.attrs.some(a => (attrsAgora[a.id] || '') !== (attrsAntes[a.id] || ''))) mud.attributes = attrsAgora;
+
+  const freteAntes = { mode: it.shipping?.mode, free_shipping: !!it.shipping?.free_shipping, local_pick_up: !!it.shipping?.local_pick_up };
+  const freteAgora = { mode: $('mFrete').value, free_shipping: $('mFreteGratis').checked, local_pick_up: $('mRetirada').checked };
+  if(JSON.stringify(freteAntes) !== JSON.stringify(freteAgora)) mud.shipping = freteAgora;
+
+  const termos = {};
+  $('mAttrs').querySelectorAll('[data-termo]').forEach(el => {
+    const v = el.value.trim();
+    if(!v) return;
+    const un = $('mAttrs').querySelector(`[data-unidade-de="${el.dataset.termo}"]`);
+    termos[el.dataset.termo] = un ? `${v} ${un.value}` : v;
+  });
+  const termosAntes = Object.fromEntries((it.termos || []).map(t => [t.id, t.valor]));
+  if(Object.keys(termos).some(k => termos[k] !== termosAntes[k])) mud.sale_terms = termos;
+
+  const descNova = $('mDescricao').value.trim();
+  const descMudou = descNova !== (ed.descricao || '').trim();
+  const tipoNovo = $('mTipo').value;
+  const tipoMudou = tipoNovo && tipoNovo !== it.listing_type_id;
+
+  if(!Object.keys(mud).length && !descMudou && !tipoMudou){
+    b.disabled = false; $('mRodape').textContent = '';
+    return mErro('Nada mudou.');
+  }
+
+  try{
+    if(Object.keys(mud).length){
+      await api('/api/items/' + it.id, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(mud) });
+    }
+    if(descMudou){
+      await api(`/api/items/${it.id}/description`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ plain_text: descNova }) });
+    }
+    if(tipoMudou){
+      await api(`/api/items/${it.id}/listing-type`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ listing_type_id: tipoNovo }) });
+    }
+    fecharModal();
+    aviso(`${it.id} atualizado.`, 'ok');
+    carregar();
+  }catch(e){ mErro('O Mercado Livre recusou:\n' + e.message); }
+  finally{ b.disabled = false; $('mRodape').textContent = ''; }
+};
+
+
+// ---------- análise do anúncio ----------
+const modalAn = $('modalAn');
+const num = (n) => n == null ? '—' : new Intl.NumberFormat('pt-BR').format(n);
+const dinheiro = (n) => n == null ? '—' : brl.format(n);
+const pct = (n) => n == null ? '—' : (n * 100).toFixed(n < 0.1 ? 2 : 1).replace('.', ',') + '%';
+
+function kpi(rot, val, sub, classe){
+  const d = document.createElement('div');
+  d.className = 'kpi' + (classe ? ' ' + classe : '');
+  const r = document.createElement('div'); r.className = 'rot'; r.textContent = rot;
+  const v = document.createElement('div'); v.className = 'val'; v.textContent = val;
+  d.append(r, v);
+  if(sub){ const s = document.createElement('div'); s.className = 'sub'; s.textContent = sub; d.appendChild(s); }
+  return d;
+}
+
+// Série de visitas em SVG: sem biblioteca, e o eixo começa em zero para não mentir na inclinação.
+function sparkline(serie){
+  const L = 560, A = 110, pad = 6;
+  const max = Math.max(1, ...serie.map(d => d.total));
+  const passo = serie.length > 1 ? (L - pad*2) / (serie.length - 1) : 0;
+  const pts = serie.map((d, i) => [pad + i*passo, A - pad - (d.total / max) * (A - pad*2)]);
+  const linha = pts.map(p => p.map(n => n.toFixed(1)).join(',')).join(' ');
+  const area = `${pad},${A-pad} ${linha} ${(pad + (serie.length-1)*passo).toFixed(1)},${A-pad}`;
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${L} ${A}`);
+  svg.setAttribute('role', 'img');
+  svg.setAttribute('aria-label', `Visitas por dia nos últimos ${serie.length} dias, pico de ${max}`);
+  const poly = document.createElementNS(ns, 'polygon');
+  poly.setAttribute('points', area); poly.setAttribute('fill', 'rgba(52,131,250,.14)');
+  const pl = document.createElementNS(ns, 'polyline');
+  pl.setAttribute('points', linha); pl.setAttribute('fill', 'none');
+  pl.setAttribute('stroke', 'var(--brand)'); pl.setAttribute('stroke-width', '2');
+  pl.setAttribute('stroke-linejoin', 'round');
+  svg.append(poly, pl);
+  return svg;
+}
+
+function linhas(pares){
+  const ul = document.createElement('ul');
+  ul.className = 'listaDados';
+  for(const [rot, val] of pares){
+    if(val == null) continue;
+    const li = document.createElement('li');
+    const a = document.createElement('span'); a.className = 'rot'; a.textContent = rot;
+    const b = document.createElement('span'); b.textContent = val;
+    li.append(a, b); ul.appendChild(li);
+  }
+  return ul;
+}
+
+function bloco(titulo, conteudo){
+  const d = document.createElement('div');
+  d.className = 'grafico';
+  const h = document.createElement('h4'); h.textContent = titulo;
+  d.append(h, conteudo);
+  return d;
+}
+
+async function abrirAnalytics(id, dias){
+  // o browser restaura o valor do select ao recarregar a página: fixa o padrão na abertura
+  if(itemAtual !== id) $('anDias').value = String(dias || 30);
+  $('anCorpo').innerHTML = '<p class="nota">carregando…</p>';
+  $('anSub').textContent = id;
+  $('anRodape').textContent = '';
+  modalAn.showModal();
+  try{
+    const a = await api(`/api/items/${id}/analytics?dias=${$('anDias').value}`);
+    const c = $('anCorpo');
+    c.innerHTML = '';
+    $('anSub').textContent = `${a.item.id} · ${ROTULO[a.item.status] || a.item.status} · ${a.item.tipo}`;
+
+    const g = document.createElement('div');
+    g.className = 'kpis';
+    const D = a.janela.dias;
+    g.append(
+      kpi(`Visitas ${D} dias`, num(a.visitas.janela), `${num(a.visitas.historico)} desde sempre`),
+      kpi(`Pedidos ${D} dias`, num(a.vendas.pedidos), `${num(a.vendas.unidades)} unidade(s)`),
+      kpi(`Faturamento ${D} dias`, dinheiro(a.vendas.faturamento),
+        (a.vendas.parcial ? 'parcial · ' : '') + `ticket ${dinheiro(a.vendas.ticket_medio)}`, 'destaque'),
+      kpi('Conversão', pct(a.vendas.conversao), `pedidos ÷ visitas · ${D} dias`,
+        a.vendas.conversao != null && a.vendas.conversao < 0.01 ? 'aviso' : ''),
+      kpi('Vendidos (sempre)', num(a.vendas.vendidos_historico), 'histórico do anúncio'),
+      kpi('Qualidade', a.item.health == null ? '—' : Math.round(a.item.health*100) + '%',
+        'health do Mercado Livre', a.item.health != null && a.item.health < 0.8 ? 'aviso' : ''),
+    );
+    c.appendChild(g);
+
+    if(a.visitas.serie.length){
+      const wrap = document.createElement('div');
+      wrap.appendChild(sparkline(a.visitas.serie));
+      const p = document.createElement('div');
+      p.className = 'sub';
+      p.style.cssText = 'font-size:11px;color:var(--muted);margin-top:6px';
+      p.textContent = a.visitas.pico
+        ? `pico de ${a.visitas.pico.total} visitas em ${new Date(a.visitas.pico.data).toLocaleDateString('pt-BR')}`
+        : '';
+      wrap.appendChild(p);
+      c.appendChild(bloco(`Visitas por dia — últimos ${a.janela.dias} dias`, wrap));
+    }
+
+    const cols = document.createElement('div');
+    cols.className = 'colunas';
+
+    cols.appendChild(bloco('Preço e custo', linhas([
+      ['Preço de venda', dinheiro(a.item.preco)],
+      ['Taxa do Mercado Livre', a.custo ? `${dinheiro(a.custo.taxa_venda)} (${pct(a.custo.taxa_percentual)})` : null],
+      ['Taxa de publicação', a.custo ? dinheiro(a.custo.taxa_anuncio) : null],
+      ['Você recebe por venda', a.custo ? dinheiro(a.custo.liquido) : null],
+      ['Exposição', a.custo?.exposicao || null],
+      ['Frete grátis', a.item.frete_gratis ? 'sim' : 'não'],
+      ['Estoque', num(a.item.estoque)],
+    ])));
+
+    cols.appendChild(bloco('Reputação e contato', linhas([
+      ['Avaliações', a.avaliacoes ? `${num(a.avaliacoes.total)}${a.avaliacoes.nota ? ` · nota ${a.avaliacoes.nota.toFixed(1)}` : ''}` : null],
+      ['Perguntas', a.perguntas ? num(a.perguntas.total) : null],
+      ['Sem responder', a.perguntas ? num(a.perguntas.sem_resposta) : null],
+      ['Anúncio de catálogo', a.item.catalogo ? 'sim' : 'não'],
+      ['No ar desde', new Date(a.item.criado_em).toLocaleDateString('pt-BR')],
+      ['Mercado Ads', a.ads ? `${a.ads.status} · campanha ${a.ads.campanha}` : 'fora de campanha'],
+    ])));
+    c.appendChild(cols);
+
+    c.appendChild(bloco('Posição na listagem', await secaoPosicao(a.item.id)));
+
+    if(a.vendas.ultimos.length){
+      c.appendChild(bloco('Últimos pedidos', linhas(a.vendas.ultimos.map(o =>
+        [`${new Date(o.data).toLocaleDateString('pt-BR')} · ${o.status}`, dinheiro(o.total)]))));
+    }
+
+    if(a.tendencias.length){
+      const ch = document.createElement('div');
+      ch.className = 'chips';
+      for(const t of a.tendencias){ const s = document.createElement('span'); s.textContent = t; ch.appendChild(s); }
+      const w = document.createElement('div');
+      const p = document.createElement('p');
+      p.className = 'nota';
+      p.textContent = 'O que as pessoas mais buscam nesta categoria — use no título se fizer sentido.';
+      w.append(p, ch);
+      c.appendChild(bloco('Tendências da categoria', w));
+    }
+
+    const obs = document.createElement('p');
+    obs.className = 'nota';
+    obs.textContent = `Visitas, pedidos, faturamento e conversão cobrem a mesma janela de ${a.janela.dias} dias `
+      + `(${a.janela.de} a ${a.janela.ate}). "Desde sempre" e "vendidos" são o total histórico do anúncio. `
+      + 'A série diária de visitas do Mercado Livre vai no máximo até 150 dias.'
+      + (a.vendas.parcial ? ' O faturamento está parcial: passou de 200 pedidos na janela.' : '');
+    c.appendChild(obs);
+    $('anRodape').textContent = a.item.titulo.slice(0, 70);
+  }catch(e){
+    $('anCorpo').innerHTML = '';
+    const p = document.createElement('p');
+    p.className = 'nota alerta';
+    p.textContent = 'Não carregou a análise: ' + e.message;
+    $('anCorpo').appendChild(p);
+  }
+}
+$('anDias').onchange = () => { if(itemAtual) abrirAnalytics(itemAtual); };
+$('anFechar').onclick = () => modalAn.close();
+$('anOk').onclick = () => modalAn.close();
+
+
+// ---------- posição na listagem ----------
+let itemAtual = null;
+
+async function secaoPosicao(id){
+  itemAtual = id;
+  const caixa = document.createElement('div');
+
+  const estado = document.createElement('p');
+  estado.className = 'nota';
+  estado.textContent = 'verificando o scraper…';
+  caixa.appendChild(estado);
+
+  const lista = document.createElement('div');
+  caixa.appendChild(lista);
+
+  const form = document.createElement('div');
+  form.style.cssText = 'display:flex;gap:8px;margin-top:12px';
+  const campo = document.createElement('input');
+  campo.placeholder = 'cascata piscina inox';
+  campo.setAttribute('aria-label', 'Nova palavra-chave');
+  campo.maxLength = 80;
+  const add = document.createElement('button');
+  add.type = 'button'; add.textContent = 'Acompanhar termo';
+  add.onclick = async () => {
+    const t = campo.value.trim();
+    if(t.length < 2) return;
+    add.disabled = true; add.textContent = 'Adicionando…';
+    try{
+      await api('/api/keywords', { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ item:id, termo:t }) });
+      campo.value = '';
+      await pintarPalavras(id, lista, t.toLowerCase());   // o servidor grava em minúsculas
+    }catch(e){ estado.className='nota alerta'; estado.textContent = e.message; }
+    finally{ add.disabled = false; add.textContent = 'Acompanhar termo'; }
+  };
+  campo.onkeydown = (e) => { if(e.key === 'Enter'){ e.preventDefault(); add.click(); } };
+  form.append(campo, add);
+  caixa.appendChild(form);
+
+  api('/api/scraper').then(s => {
+    if(s.ligado && s.sessao === 'valida'){
+      estado.className = 'nota';
+      estado.textContent = 'O Mercado Livre não entrega posição pela API oficial (403). '
+        + 'Quem mede é o scraper local — cada consulta leva de 5 a 15 s.';
+    }else if(s.ligado){
+      estado.className = 'nota alerta';
+      estado.textContent = s.sessao === 'em_uso'
+        ? 'O navegador do scraper está aberto para login ou reCAPTCHA. Conclua ou feche na aba '
+        : 'O Mercado Livre bloqueou a sessão do scraper. Resolva na aba ';
+      const link = document.createElement('a');
+      link.href = '/navegador.html'; link.textContent = 'Navegador';
+      estado.append(link, '.');
+    }else{
+      estado.className = 'nota alerta';
+      estado.textContent = s.motivo;
+    }
+  }).catch(() => {});
+
+  pintarPalavras(id, lista);
+  return caixa;
+}
+
+// ---------- tabela de posição ----------
+const TIPO_ANUNCIO = { PAD:'Pago', ORGANIC:'Orgânico' };
+
+// URL limpa do item. O link do card de um anúncio pago passa por click1.mercadolivre
+// e conta um clique pago para o concorrente — por isso não é usado.
+function linkAnuncio(itemId, rotulo = null){
+  const a = document.createElement('a');
+  a.href = 'https://produto.mercadolivre.com.br/MLB-' + itemId.replace(/^MLB/, '');
+  a.target = '_blank'; a.rel = 'noopener noreferrer';
+  a.setAttribute('aria-label', `Abrir ${rotulo || itemId} no Mercado Livre (nova aba)`);
+  a.className = 'linkAnuncio';
+  a.innerHTML = '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" '
+    + 'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+    + '<path d="M14 4h6v6"/><path d="M10 14 20 4"/>'
+    + '<path d="M19 13v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h6"/></svg>';
+  const texto = document.createElement('span');
+  texto.textContent = rotulo || itemId;   // textContent: título vem da página do ML
+  a.append(texto);
+  return a;
+}
+
+// Uma tabela só, na ordem da busca, com anúncios de TODOS os vendedores para comparar preço
+// e posição. Resumo: os primeiros colocados, os vizinhos deste anúncio e todos os seus; cada
+// trecho escondido vira "⋯ N anúncios — mostrar" e abre ali mesmo; "Ver todos" abre a busca.
+// Medição antiga (sem k.lista) só guardou vizinhos e os seus: os trechos não abrem.
+function tabelaPosicao(id, k){
+  const temLista = Array.isArray(k.lista) && k.lista.length > 0;
+  const posMeus = new Set((k.meus || []).map((m) => m.posicao));
+  let linhas;
+  if(temLista){
+    linhas = k.lista;
+  }else{
+    const porPos = new Map();
+    for(const v of [...(k.vizinhos || []), ...(k.meus || [])]) if(!porPos.has(v.posicao)) porPos.set(v.posicao, v);
+    linhas = [...porPos.values()].sort((a, b) => a.posicao - b.posicao);
+  }
+  if(!linhas.length) return null;
+
+  const ehSeu = (v) => v.item_id !== id && (temLista ? v.seu === true : posMeus.has(v.posicao));
+  const meuPreco = linhas.find((v) => v.item_id === id)?.preco ?? null;
+  const viz = k.vizinhos || [];
+  const [vizIni, vizFim] = viz.length ? [viz[0].posicao, viz.at(-1).posicao] : [0, -1];
+  const lideres = k.posicao == null ? 5 : 3;
+  const noResumo = (v) => v.item_id === id || ehSeu(v) || v.posicao <= lideres
+    || (v.posicao >= vizIni && v.posicao <= vizFim);
+  const outros = linhas.filter(ehSeu).length;
+
+  let todos = false;
+  const abertos = new Set();   // chave = posição do primeiro anúncio do trecho aberto
+  const caixa = document.createElement('div');
+
+  function legenda(){
+    if(todos) return `Todos os ${linhas.length} anúncios lidos nesta busca, de todos os vendedores.`;
+    const partes = [`os ${lideres} primeiros`];
+    if(viz.length) partes.push(`os vizinhos deste anúncio (${vizIni}º a ${vizFim}º)`);
+    if(outros) partes.push(outros === 1 ? 'seu outro anúncio' : `seus ${outros} outros anúncios`);
+    return (k.posicao == null ? 'Este anúncio não apareceu. ' : '')
+      + 'Mostrando ' + partes.join(', ').replace(/, ([^,]*)$/, ' e $1') + '.'
+      + (temLista ? '' : ' Meça de novo para ver também os outros vendedores.');
+  }
+
+  function desenhar(foco){
+    caixa.textContent = '';
+    const barra = document.createElement('div');
+    barra.className = 'barraPos';
+    const p = document.createElement('p');
+    p.className = 'nota'; p.textContent = legenda();
+    barra.appendChild(p);
+    if(temLista){
+      const alternar = document.createElement('button');
+      alternar.type = 'button'; alternar.className = 'ghost alternarPos';
+      alternar.textContent = todos ? 'Mostrar resumo' : `Ver todos os ${linhas.length}`;
+      alternar.setAttribute('aria-expanded', String(todos));
+      alternar.onclick = () => { todos = !todos; abertos.clear(); desenhar('.alternarPos'); };
+      barra.appendChild(alternar);
+    }
+    caixa.appendChild(barra);
+
+    const t = document.createElement('table');
+    t.className = 'tabPos';
+    // colunas curtas com largura fixa; o anúncio fica com o resto e o título corta em "…"
+    const cols = t.appendChild(document.createElement('colgroup'));
+    for(const w of ['46px', null, '124px', '76px', '78px']){
+      const c = document.createElement('col'); if(w) c.style.width = w; cols.appendChild(c);
+    }
+    const cab = t.createTHead().insertRow();
+    for(const h of ['pos', 'anúncio', 'preço', 'vendidos', 'tipo']){
+      const th = document.createElement('th'); th.scope = 'col'; th.textContent = h; cab.appendChild(th);
+    }
+    const corpo = t.createTBody();
+
+    // agrupa: linha visível ou trecho escondido (anúncios seguidos fora do resumo)
+    const blocos = [];
+    for(const v of linhas){
+      if(todos || !temLista || noResumo(v)) blocos.push({ v });
+      else if(blocos.at(-1)?.trecho) blocos.at(-1).trecho.push(v);
+      else blocos.push({ trecho: [v] });
+    }
+    let anterior = null;
+    for(const b of blocos){
+      if(b.v){
+        // medição antiga: a numeração pula direto, sem os dados do que ficou no meio
+        if(!temLista && anterior != null && b.v.posicao - anterior > 1){
+          linhaTrecho(corpo, anterior + 1, b.v.posicao - anterior - 1, false);
+        }
+        linhaAnuncio(corpo, b.v);
+        anterior = b.v.posicao;
+      }else if(abertos.has(b.trecho[0].posicao)){
+        b.trecho.forEach((v) => linhaAnuncio(corpo, v));
+      }else{
+        linhaTrecho(corpo, b.trecho[0].posicao, b.trecho.length, true);
+      }
+    }
+    const rolagem = document.createElement('div');
+    rolagem.className = 'rolagemPos';
+    rolagem.appendChild(t);
+    caixa.appendChild(rolagem);
+    if(foco) caixa.querySelector(foco)?.focus();
+  }
+
+  function linhaTrecho(corpo, ini, n, abre){
+    const tr = corpo.insertRow(); tr.className = 'pulo';
+    const td = tr.insertCell(); td.colSpan = 5;
+    const texto = `⋯ ${n} ${n > 1 ? 'anúncios' : 'anúncio'} de outros vendedores`
+      + ` (${ini}º${n > 1 ? ` a ${ini + n - 1}º` : ''})`;
+    if(!abre){ td.textContent = texto; return; }
+    const b = document.createElement('button');
+    b.type = 'button'; b.textContent = texto + ' — mostrar';
+    b.onclick = () => { abertos.add(ini); desenhar(`tr[data-pos="${ini}"] a`); };
+    td.appendChild(b);
+  }
+
+  function linhaAnuncio(corpo, v){
+    const este = v.item_id === id, seu = ehSeu(v);
+    const tr = corpo.insertRow();
+    tr.dataset.pos = v.posicao;
+    if(este || seu) tr.className = este ? 'este' : 'seu';
+    tr.insertCell().textContent = `${v.posicao}º`;
+
+    const bloco = document.createElement('div');
+    bloco.className = 'anuncioPos';
+    if(v.imagem){
+      const img = document.createElement('img');
+      img.src = v.imagem; img.alt = ''; img.loading = 'lazy'; img.width = 36; img.height = 36;
+      img.referrerPolicy = 'no-referrer';
+      bloco.appendChild(img);
+    }
+    const txt = document.createElement('div');
+    txt.className = 'textoPos';
+    const a = linkAnuncio(v.item_id, v.titulo);
+    if(v.titulo) a.title = v.titulo;
+    txt.appendChild(a);
+    const meta = document.createElement('div');
+    meta.className = 'metaPos';
+    meta.textContent = [v.titulo ? v.item_id : null, v.vendedor].filter(Boolean).join(' · ');
+    if(este || seu){
+      const marca = document.createElement('span');
+      marca.className = 'marca' + (este ? ' este' : '');
+      marca.textContent = este ? 'este' : 'seu';
+      meta.appendChild(marca);
+    }
+    if(meta.childNodes.length) txt.appendChild(meta);
+    bloco.appendChild(txt);
+    tr.insertCell().appendChild(bloco);
+
+    const preco = tr.insertCell();
+    preco.append(celulaPreco(v));
+    if(!este && meuPreco && v.preco){
+      const d = Math.round((v.preco / meuPreco - 1) * 100);
+      const dif = document.createElement('span');
+      dif.className = 'difPos';
+      dif.textContent = d === 0 ? 'mesmo preço que o seu' : `${Math.abs(d)}% ${d < 0 ? 'abaixo' : 'acima'} do seu`;
+      preco.appendChild(dif);
+    }
+    tr.insertCell().textContent = v.vendidos != null ? `${v.vendidos}+` : '—';
+    tr.insertCell().textContent = TIPO_ANUNCIO[v.tipo] || v.tipo || '—';
+  }
+
+  desenhar();
+  return [caixa];
+}
+
+function celulaPreco(v){
+  if(v.preco == null) return '—';
+  const f = document.createDocumentFragment();
+  f.append(brl.format(v.preco));
+  if(v.preco_original){
+    const antes = document.createElement('s');
+    antes.textContent = brl.format(v.preco_original);
+    antes.title = 'preço sem desconto';
+    antes.style.cssText = 'display:block;font-size:11px;font-weight:400;color:var(--muted)';
+    f.append(antes);
+  }
+  return f;
+}
+
+// medirTermo: o termo recém-cadastrado já entra medindo, sem precisar clicar em "Medir agora"
+async function pintarPalavras(id, onde, medirTermo = null){
+  onde.innerHTML = '';
+  let palavras = [];
+  try{ palavras = await api('/api/keywords?item=' + id); }catch{ return; }
+  if(!palavras.length){
+    const p = document.createElement('p');
+    p.className = 'nota';
+    p.textContent = 'Nenhum termo acompanhado. Cadastre a busca que importa para este produto.';
+    onde.appendChild(p);
+    return;
+  }
+  for(const k of palavras) onde.appendChild(linhaPalavra(id, k, onde, k.termo === medirTermo));
+}
+
+function linhaPalavra(id, k, onde, medirJa = false){
+  const li = document.createElement('div');
+  li.style.cssText = 'border:1px solid var(--line);border-radius:var(--radius);padding:11px 13px;margin-bottom:9px';
+
+  const topo = document.createElement('div');
+  topo.style.cssText = 'display:flex;align-items:center;gap:10px;flex-wrap:wrap';
+
+  const termo = document.createElement('strong');
+  termo.textContent = k.termo; termo.style.fontSize = '14px';
+
+  const pos = document.createElement('span');
+  pos.style.cssText = 'font-size:14px';
+  if(!k.medida_em){
+    pos.className = 'nota'; pos.textContent = 'ainda não medido';
+  }else if(k.posicao == null){
+    // mediu e não achou: dizer isso, não "ainda não medido" (parecia que o botão não fazia nada)
+    pos.textContent = `fora das ${k.total || 'primeiras'} primeiras posições`;
+    pos.style.cssText = 'font-size:14px;font-weight:600;color:#7a4a00';
+  }else{
+    pos.innerHTML = '';
+    const n = document.createElement('strong');
+    n.textContent = `${k.posicao}º`;
+    n.style.cssText = 'font-size:17px;color:var(--brand)';
+    pos.appendChild(n);
+    const det = document.createElement('span');
+    det.className = 'nota';
+    det.textContent = ` de ${k.total}` + (k.patrocinados_acima
+      ? ` · ${k.patrocinados_acima} ${k.patrocinados_acima > 1 ? 'pagos' : 'pago'} acima` : '');
+    pos.appendChild(det);
+    if(k.variacao != null && k.variacao !== 0){
+      const v = document.createElement('span');
+      // posição menor é melhor: variação negativa quer dizer que subiu
+      v.textContent = k.variacao < 0 ? ` ▲ subiu ${-k.variacao}` : ` ▼ caiu ${k.variacao}`;
+      v.style.cssText = 'font-size:12px;font-weight:700;margin-left:6px;color:'
+        + (k.variacao < 0 ? 'var(--ok)' : 'var(--err)');
+      pos.appendChild(v);
+    }
+  }
+
+  const medir = document.createElement('button');
+  medir.type = 'button'; medir.className = 'ghost'; medir.textContent = 'Medir agora';
+  medir.style.cssText = 'padding:6px 11px;font-size:13px';
+  const fundo = document.createElement('button');   // só aparece quando não achou na 1ª página
+  fundo.type = 'button'; fundo.className = 'ghost'; fundo.textContent = 'Buscar em 3 páginas';
+  fundo.style.cssText = 'padding:6px 11px;font-size:13px';
+  fundo.hidden = !(k.medida_em && k.posicao == null && (k.total || 0) <= 60);
+
+  // Mede e redesenha. Enquanto roda, mostra o tempo: com o Mac carregado leva 5–15 s,
+  // e um botão parado em "medindo…" sem contador parecia travado.
+  async function rodarMedicao(paginas){
+    li.querySelector('.erroMedicao')?.remove();
+    medir.disabled = fundo.disabled = true; medir.textContent = 'medindo…';
+    li.setAttribute('aria-busy', 'true');
+    const t0 = Date.now();
+    const tick = () => {
+      pos.className = 'nota'; pos.style.cssText = 'font-size:14px';
+      pos.textContent = `medindo${paginas > 1 ? ` ${paginas} páginas` : ''}… ${Math.round((Date.now() - t0) / 1000)} s`;
+    };
+    tick();
+    const relogio = setInterval(tick, 1000);
+    try{
+      await api('/api/posicao', { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ item:id, termo:k.termo, paginas }) });
+      clearInterval(relogio);
+      await pintarPalavras(id, onde);
+    }catch(e){
+      clearInterval(relogio);
+      li.removeAttribute('aria-busy');
+      pos.textContent = 'a medição falhou';
+      medir.textContent = 'Medir agora'; medir.disabled = fundo.disabled = false;
+      const err = document.createElement('p');
+      err.className = 'nota alerta erroMedicao'; err.style.marginTop = '8px'; err.textContent = e.message;
+      err.setAttribute('role', 'alert');
+      li.appendChild(err);
+    }
+  }
+  medir.onclick = () => rodarMedicao(1);
+  fundo.onclick = () => rodarMedicao(3);
+
+  const tirar = document.createElement('button');
+  tirar.type = 'button'; tirar.textContent = '✕';
+  tirar.setAttribute('aria-label', 'Parar de acompanhar ' + k.termo);
+  tirar.style.cssText = 'background:none;color:var(--muted);padding:6px 8px;font-size:14px';
+  tirar.onclick = async () => {
+    await api('/api/keywords/remove', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ item:id, termo:k.termo }) });
+    await pintarPalavras(id, onde);
+  };
+
+  const acoes = document.createElement('span');   // os botões quebram juntos, à direita
+  acoes.className = 'acoesTermo';
+  acoes.append(fundo, medir, tirar);
+  topo.append(termo, pos, acoes);
+  li.appendChild(topo);
+
+  if(k.medida_em){
+    const q = document.createElement('div');
+    q.className = 'nota';
+    q.style.marginTop = '3px';
+    q.textContent = 'medido em ' + new Date(k.medida_em).toLocaleString('pt-BR');
+    li.appendChild(q);
+  }
+
+  const tabela = tabelaPosicao(id, k);
+  if(tabela) li.append(...tabela);
+
+  if(medirJa) rodarMedicao(1);
+  return li;
+}
+
+carregarContas(); carregarAds(); carregar();
+</script>
+<script src="/aviso.js" defer></script>
+</body>
+</html>

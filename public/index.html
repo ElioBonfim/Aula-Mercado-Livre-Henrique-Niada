@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cadastro de Produtos — Mercado Livre</title>
+<style>
+  :root{
+    --bg:#f2f3f5; --card:#fff; --ink:#1a1a1a; --muted:#5f6368; --line:#e0e2e6;
+    --brand:#2968c8; --brand-ink:#fff; --ok:#00a650; --err:#d93025; --radius:8px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  header{background:#fff159;padding:14px 20px;display:flex;justify-content:space-between;
+    align-items:center;flex-wrap:wrap;gap:8px}
+  header h1{font-size:17px;margin:0;font-weight:600}
+  nav{display:flex;gap:14px;font-size:13px;margin-top:2px}
+  nav a{color:#1a1a1a}
+  nav a[aria-current]{font-weight:700;text-decoration:none}
+  #barraContas{display:flex;align-items:center;gap:8px;font-size:13px;flex-wrap:wrap}
+  #barraContas select{width:auto;padding:5px 8px;font-size:13px;border-color:#d8d38a;background:#fffdf0}
+  #barraContas a{color:#1a1a1a}
+  main{max-width:780px;margin:0 auto;padding:28px 16px 72px}
+  fieldset{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:22px 24px 26px;margin:0 0 32px}
+  legend{font-weight:600;font-size:14px;padding:0 8px;color:var(--muted)}
+  label{display:block;margin:16px 0 4px;font-size:13px;font-weight:500}
+  fieldset > label:first-of-type, #attrs > div:first-child > label{margin-top:4px}
+  .hint{font-weight:400;color:var(--muted);font-size:12px}
+  input,select,textarea{width:100%;padding:10px 12px;border:1px solid var(--line);
+    border-radius:var(--radius);font:inherit;background:#fff;color:inherit}
+  input:focus,select:focus,textarea:focus,button:focus-visible,#drop:focus-visible{outline:2px solid var(--brand);outline-offset:1px}
+  textarea{min-height:90px;resize:vertical}
+  .row{display:flex;gap:12px;flex-wrap:wrap}
+  .row>div{flex:1 1 160px}
+  .inline{display:flex;gap:8px;align-items:flex-end}
+  .inline input{flex:1}
+  button{background:var(--brand);color:var(--brand-ink);border:0;border-radius:var(--radius);
+    padding:11px 18px;font:inherit;font-weight:600;cursor:pointer}
+  button:hover{filter:brightness(.94)}
+  button.ghost{background:#eef3fd;color:var(--brand)}
+  button[disabled]{opacity:.5;cursor:not-allowed}
+  .check{display:flex;align-items:center;gap:8px;margin:12px 0 0;font-size:14px}
+  .check input{width:auto}
+  #sugestoes{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-wrap:wrap;gap:8px}
+  #sugestoes button{background:#eef3fd;color:var(--brand);font-size:13px;padding:6px 10px;font-weight:500}
+  #catInfo{font-size:13px;color:var(--muted);margin-top:6px}
+  #msg{margin-top:16px;padding:14px;border-radius:var(--radius);display:none;white-space:pre-wrap;font-size:14px}
+  #msg.ok{display:block;background:#e6f4ea;color:#14532d;border:1px solid #a6dcb6}
+  #msg.err{display:block;background:#fce8e6;color:#7f1d1d;border:1px solid #f0b3ad}
+  #msg a{color:inherit}
+  .acoes{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  @media (max-width:520px){ .inline{flex-wrap:wrap} .inline input{flex:1 1 100%} }
+
+  /* área de arrastar fotos */
+  #drop{border:2px dashed var(--line);border-radius:var(--radius);background:#fafbfc;
+    padding:32px 20px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s}
+  #drop:hover{border-color:var(--brand);background:#f5f9ff}
+  #drop.dentro{border-color:var(--brand);background:#eef3fd}
+  #drop strong{display:block;font-size:15px;margin-bottom:4px}
+  #thumbs{list-style:none;padding:0;margin:14px 0 0;display:grid;
+    grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:12px}
+  #thumbs li{position:relative;aspect-ratio:1;border:1px solid var(--line);border-radius:var(--radius);
+    overflow:hidden;background:#fff}
+  #thumbs img{width:100%;height:100%;object-fit:cover;display:block}
+  #thumbs .capa{position:absolute;left:0;bottom:0;right:0;background:rgba(0,0,0,.66);color:#fff;
+    font-size:11px;text-align:center;padding:3px}
+  #thumbs .x{position:absolute;top:4px;right:4px;width:24px;height:24px;padding:0;border-radius:50%;
+    background:rgba(0,0,0,.6);color:#fff;font-size:15px;line-height:1;display:grid;place-items:center}
+  #thumbs .carregando{display:grid;place-items:center;height:100%;font-size:12px;color:var(--muted)}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Cadastro de Produtos — Mercado Livre</h1>
+    <nav><a href="/" aria-current="page">Publicar</a><a href="/anuncios.html">Meus anúncios</a><a href="/navegador.html">Navegador</a><a href="/configuracao.html">Configuração</a></nav>
+  </div>
+  <div id="barraContas">
+    <label for="selConta" class="hint" id="rotuloConta">Conta</label>
+    <select id="selConta" aria-describedby="rotuloConta"></select>
+    <a href="/auth" id="addConta">+ conectar outra</a>
+  </div>
+</header>
+
+<main>
+<form id="form" novalidate>
+
+  <fieldset>
+    <legend>Produto</legend>
+
+    <label for="title">Título <span class="hint">(máx. 60 caracteres)</span></label>
+    <div class="inline">
+      <input id="title" name="title" maxlength="60" required
+             placeholder="Camiseta Masculina Algodão Gola V Preta">
+      <button type="button" class="ghost" id="btnPrever">Sugerir categoria</button>
+    </div>
+    <ul id="sugestoes"></ul>
+
+    <label for="category_id">Categoria</label>
+    <input id="category_id" name="category_id" required placeholder="MLB31447" pattern="[A-Z]{3}[0-9]+">
+    <div id="catInfo"></div>
+
+    <div class="row">
+      <div>
+        <label for="price">Preço (R$)</label>
+        <input id="price" name="price" type="number" min="0.01" step="0.01" required placeholder="89.90">
+      </div>
+      <div>
+        <label for="quantity">Estoque</label>
+        <input id="quantity" name="quantity" type="number" min="1" step="1" value="1" required>
+      </div>
+      <div>
+        <label for="condition">Condição</label>
+        <select id="condition" name="condition">
+          <option value="new">Novo</option>
+          <option value="used">Usado</option>
+        </select>
+      </div>
+      <div>
+        <label for="listing_type_id">Tipo de anúncio</label>
+        <select id="listing_type_id" name="listing_type_id">
+          <option value="gold_special">Clássico</option>
+          <option value="gold_pro">Premium</option>
+        </select>
+      </div>
+    </div>
+  </fieldset>
+
+  <fieldset id="fsAttrs" hidden>
+    <legend>Ficha técnica <span class="hint">— obrigatória nesta categoria</span></legend>
+    <div id="attrs"></div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Fotos e descrição</legend>
+
+    <label id="lblFotos">Fotos <span class="hint" id="contaFotos">— a primeira é a capa do anúncio</span></label>
+    <div id="drop" tabindex="0" role="button" aria-labelledby="lblFotos" aria-describedby="dropHint">
+      <strong>Arraste as fotos aqui</strong>
+      <span class="hint" id="dropHint">ou clique para escolher · cole com Ctrl+V · JPG, PNG, WEBP ou GIF até 10&nbsp;MB</span>
+    </div>
+    <input type="file" id="fileInput" accept="image/jpeg,image/png,image/webp,image/gif" multiple hidden>
+    <ul id="thumbs" aria-live="polite"></ul>
+
+    <label for="description">Descrição</label>
+    <textarea id="description" name="description" placeholder="Detalhes, medidas, composição, garantia…"></textarea>
+  </fieldset>
+
+  <fieldset>
+    <legend>Envio</legend>
+    <label for="shipping_mode">Modo</label>
+    <select id="shipping_mode" name="shipping_mode">
+      <option value="me2">Mercado Envios</option>
+      <option value="not_specified">Combinar com o comprador</option>
+    </select>
+    <div class="check"><input type="checkbox" id="free_shipping" name="free_shipping"><label for="free_shipping" style="margin:0">Frete grátis</label></div>
+    <div class="check"><input type="checkbox" id="local_pick_up" name="local_pick_up"><label for="local_pick_up" style="margin:0">Aceita retirada em mãos</label></div>
+  </fieldset>
+
+  <div class="acoes">
+    <button type="submit" id="btnSalvar">Publicar anúncio</button>
+    <span class="hint">O anúncio entra no ar imediatamente na sua conta.</span>
+  </div>
+  <div id="msg" role="status" aria-live="polite"></div>
+</form>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const msg = $('msg');
+function aviso(texto, tipo){ msg.className = tipo; msg.textContent = texto; msg.scrollIntoView({block:'nearest'}); }
+
+async function api(path, opts){
+  const r = await fetch(path, opts);
+  const j = await r.json();
+  if(!r.ok) throw new Error([j.error, j.detail && JSON.stringify(j.detail)].filter(Boolean).join('\n'));
+  return j;
+}
+
+// ---------- contas conectadas ----------
+const selConta = $('selConta');
+
+async function carregarContas(){
+  try{
+    const { ativa, contas } = await api('/api/accounts');
+    selConta.innerHTML = '';
+    if(!contas.length){
+      selConta.hidden = true;
+      $('rotuloConta').textContent = 'nenhuma conta conectada —';
+      $('addConta').textContent = 'conectar Mercado Livre →';
+      return;
+    }
+    selConta.hidden = false;
+    $('rotuloConta').textContent = 'Conta';
+    $('addConta').textContent = '+ conectar outra';
+    for(const c of contas){
+      const o = document.createElement('option');   // textContent: nickname vem do ML, não confiar
+      o.value = c.ml_user_id;
+      o.textContent = `${c.nickname} · ${c.site_id} · ${c.produtos} anúncio(s)`;
+      o.selected = c.ml_user_id === ativa;
+      selConta.appendChild(o);
+    }
+  }catch(e){
+    selConta.hidden = true;
+    $('rotuloConta').textContent = 'sem conexão —';
+    $('addConta').textContent = 'conectar Mercado Livre →';
+  }
+}
+
+selConta.onchange = async () => {
+  try{
+    await api('/api/accounts/active', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ ml_user_id: Number(selConta.value) }),
+    });
+    location.reload(); // troca de conta muda categoria, fotos e limites: recomeça limpo
+  }catch(e){ aviso('Não trocou de conta: ' + e.message, 'err'); }
+};
+
+carregarContas();
+
+// ---------- fotos: arrastar, clicar ou colar ----------
+let fotos = [];        // [{ id, thumb }] já enviadas ao Mercado Livre
+let maxFotos = 12;
+
+function pintarFotos(){
+  $('thumbs').innerHTML = '';
+  fotos.forEach((f, i) => {
+    const li = document.createElement('li');
+    const img = document.createElement('img');
+    img.src = f.thumb; img.alt = `Foto ${i+1}`;
+    const x = document.createElement('button');
+    x.type = 'button'; x.className = 'x'; x.textContent = '×';
+    x.setAttribute('aria-label', `Remover foto ${i+1}`);
+    x.onclick = () => { fotos.splice(i,1); pintarFotos(); };
+    li.append(img, x);
+    if(i === 0){ const c = document.createElement('span'); c.className='capa'; c.textContent='capa'; li.appendChild(c); }
+    $('thumbs').appendChild(li);
+  });
+  $('contaFotos').textContent = fotos.length
+    ? `— ${fotos.length} de ${maxFotos} · a primeira é a capa`
+    : '— a primeira é a capa do anúncio';
+}
+
+function cardCarregando(){
+  const li = document.createElement('li');
+  li.innerHTML = '<div class="carregando">enviando…</div>';
+  $('thumbs').appendChild(li);
+  return li;
+}
+
+// O ML recusa imagem com menos de 500px no maior lado — medimos antes de gastar o upload.
+async function medir(arq){
+  try{
+    const bmp = await createImageBitmap(arq);
+    const w = bmp.width, h = bmp.height;
+    bmp.close?.();
+    return { w, h, ok: Math.max(w, h) >= 500 };
+  }catch{ return { ok: true }; } // não deu para medir: deixa o ML decidir
+}
+
+async function enviarFotos(lista){
+  const arquivos = [...lista].filter(f => f.type.startsWith('image/'));
+  if(!arquivos.length) return aviso('Solte um arquivo de imagem (JPG, PNG, WEBP ou GIF).', 'err');
+  for(const arq of arquivos){
+    if(fotos.length >= maxFotos){ aviso(`Esta categoria aceita no máximo ${maxFotos} fotos.`, 'err'); break; }
+    const d = await medir(arq);
+    if(!d.ok){
+      aviso(`"${arq.name}" tem ${d.w}×${d.h}px. O Mercado Livre exige no mínimo 500px `
+        + `no maior lado — o ideal é 1200×1200 para permitir zoom.`, 'err');
+      continue;
+    }
+    const card = cardCarregando();
+    try{
+      const r = await api('/api/pictures', { method:'POST', headers:{'Content-Type':arq.type}, body:arq });
+      fotos.push({ id:r.id, thumb:r.thumb || URL.createObjectURL(arq) });
+      msg.className = '';
+    }catch(e){ aviso(`Não enviou "${arq.name}":\n${e.message}`, 'err'); }
+    finally{ card.remove(); pintarFotos(); }
+  }
+}
+
+const drop = $('drop');
+drop.onclick = () => $('fileInput').click();
+drop.onkeydown = (e) => { if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); $('fileInput').click(); } };
+$('fileInput').onchange = (e) => { enviarFotos(e.target.files); e.target.value = ''; };
+['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, (e) => {
+  e.preventDefault(); drop.classList.add('dentro');
+}));
+['dragleave','drop'].forEach(ev => drop.addEventListener(ev, (e) => {
+  e.preventDefault(); drop.classList.remove('dentro');
+}));
+drop.addEventListener('drop', (e) => enviarFotos(e.dataTransfer.files));
+// impede o browser de abrir a imagem se ela cair fora da área
+['dragover','drop'].forEach(ev => document.addEventListener(ev, (e) => e.preventDefault()));
+document.addEventListener('paste', (e) => {
+  const imgs = [...(e.clipboardData?.files || [])].filter(f => f.type.startsWith('image/'));
+  if(imgs.length){ e.preventDefault(); enviarFotos(imgs); }
+});
+
+// ---------- categoria ----------
+$('btnPrever').onclick = async () => {
+  const q = $('title').value.trim();
+  if(!q) return aviso('Escreva o título antes de pedir a sugestão.', 'err');
+  const lista = $('sugestoes'); lista.innerHTML = '<li class="hint">buscando…</li>';
+  try{
+    const r = await api('/api/predict?q=' + encodeURIComponent(q));
+    const vistos = new Set();
+    lista.innerHTML = '';
+    r.filter(c => !vistos.has(c.category_id) && vistos.add(c.category_id)).forEach(c => {
+      const li = document.createElement('li');
+      const b = document.createElement('button');
+      b.type = 'button'; b.textContent = `${c.category_name} (${c.category_id})`;
+      b.onclick = () => { $('category_id').value = c.category_id; carregarCategoria(); };
+      li.appendChild(b); lista.appendChild(li);
+    });
+    if(!lista.children.length) lista.innerHTML = '<li class="hint">nenhuma sugestão — informe a categoria manualmente.</li>';
+  }catch(e){ aviso('Falha ao sugerir categoria: ' + e.message, 'err'); lista.innerHTML=''; }
+};
+
+let attrsAtuais = [];
+async function carregarCategoria(){
+  const id = $('category_id').value.trim().toUpperCase();
+  $('fsAttrs').hidden = true; $('attrs').innerHTML = ''; attrsAtuais = [];
+  if(!/^[A-Z]{3}\d+$/.test(id)) { $('catInfo').textContent = ''; return; }
+  $('catInfo').textContent = 'carregando ficha técnica…';
+  try{
+    const c = await api('/api/category?id=' + id);
+    $('catInfo').textContent = c.path || c.name;
+    maxFotos = c.settings?.max_pictures_per_item || 12;
+    pintarFotos();
+
+    const cond = $('condition');
+    const permitidas = c.settings?.item_conditions || ['new','used'];
+    [...cond.options].forEach(o => o.hidden = !permitidas.includes(o.value));
+    if(cond.selectedOptions[0]?.hidden) cond.value = permitidas[0];
+
+    // a tela de publicar exige só os obrigatórios; a de editar mostra os 54
+    attrsAtuais = c.attributes.filter(a => a.obrigatorio);
+    if(!attrsAtuais.length) return;
+    $('fsAttrs').hidden = false;
+    attrsAtuais.forEach(a => {
+      const wrap = document.createElement('div');
+      const lab = document.createElement('label');
+      lab.htmlFor = 'attr_' + a.id; lab.textContent = a.name;
+      let campo;
+      if(a.values.length){
+        campo = document.createElement('select');
+        campo.innerHTML = '<option value="">— selecione —</option>' +
+          a.values.map(v => `<option>${v.replace(/</g,'&lt;')}</option>`).join('');
+      }else{
+        campo = document.createElement('input');
+        campo.placeholder = a.value_type === 'number_unit' ? 'ex.: 500 g' : '';
+      }
+      campo.id = 'attr_' + a.id; campo.dataset.attr = a.id; campo.required = true;
+      wrap.append(lab, campo); $('attrs').appendChild(wrap);
+    });
+  }catch(e){ $('catInfo').textContent = 'categoria não encontrada'; }
+}
+$('category_id').addEventListener('change', carregarCategoria);
+
+// ---------- envio ----------
+$('form').onsubmit = async (ev) => {
+  ev.preventDefault();
+  const btn = $('btnSalvar'); btn.disabled = true; aviso('Publicando…', 'ok');
+  const f = new FormData(ev.target);
+  const dados = Object.fromEntries(f.entries());
+  dados.free_shipping = f.has('free_shipping');
+  dados.local_pick_up = f.has('local_pick_up');
+  dados.picture_ids = fotos.map(x => x.id);
+  dados.attributes = {};
+  document.querySelectorAll('[data-attr]').forEach(el => dados.attributes[el.dataset.attr] = el.value);
+
+  const faltando = attrsAtuais.filter(a => !dados.attributes[a.id]).map(a => a.name);
+  if(faltando.length){ btn.disabled = false; return aviso('Preencha a ficha técnica: ' + faltando.join(', '), 'err'); }
+  if(!fotos.length){ btn.disabled = false; return aviso('Adicione ao menos uma foto.', 'err'); }
+
+  try{
+    const r = await api('/api/items', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(dados)
+    });
+    msg.className = 'ok';
+    msg.innerHTML = `Anúncio <strong>${r.id}</strong> publicado (${r.status}).` +
+      (r.permalink ? ` <a href="${r.permalink}" target="_blank" rel="noopener">Abrir no Mercado Livre →</a>` : '') +
+      (r.description_ok === false ? '<br>Atenção: a descrição não foi salva — edite o anúncio para incluí-la.' : '');
+    ev.target.reset(); fotos = []; pintarFotos();
+    $('sugestoes').innerHTML = ''; $('fsAttrs').hidden = true; $('catInfo').textContent = '';
+  }catch(e){ aviso('Não publicou:\n' + e.message, 'err'); }
+  finally{ btn.disabled = false; }
+};
+</script>
+<script src="/aviso.js" defer></script>
+</body>
+</html>

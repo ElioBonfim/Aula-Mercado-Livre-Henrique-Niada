@@ -1,0 +1,1222 @@
+'use strict';
+// Backend do painel de anúncios do Mercado Livre.
+// Node 22.13+ (fetch e node:sqlite nativos). Tokens vivem no SQLite, cifrados, e NUNCA
+// chegam ao browser.
+//
+// DOIS servidores no mesmo processo:
+//   painel  (127.0.0.1:PORT, padrão 3100)          telas, API, login. Só este computador.
+//   público (127.0.0.1:PORTA_PUBLICA, padrão 3101) só /callback e /webhook. É o que o
+//           túnel publica na internet: o painel não fica alcançável de fora por construção.
+if (require.main === module) require('./ambiente.js').carregar(); // antes do db.js ler a chave
+const http = require('node:http');
+const fs = require('node:fs');
+const path = require('node:path');
+const crypto = require('node:crypto');
+const { URL } = require('node:url');
+const D = require('./db.js');
+const APP = require('./app-ml.js');
+
+const PORT = Number(process.env.PORT) || 3100;
+const PORTA_PUBLICA = Number(process.env.PORTA_PUBLICA) || 3101;
+const SITE_PADRAO = process.env.ML_SITE || 'MLB';
+const API = 'https://api.mercadolibre.com';
+const MAX_FOTO_BYTES = 10 * 1024 * 1024;
+
+// Túnel e scraper são do iniciar.js. Rodando `node server.js` sozinho, valem estes padrões.
+let servicos = {
+  tunel: () => (process.env.URL_PUBLICA
+    ? { estado: 'online', provedor: 'fixa', url: process.env.URL_PUBLICA.replace(/\/+$/, ''), verificado: null }
+    : { estado: 'desligado', provedor: null, url: null }),
+  scraper: () => null,
+  reiniciarScraper: null,
+};
+
+// App ID e chave: da tela de primeiro acesso (SQLite). O .env fica como alternativa.
+function credenciais() {
+  return {
+    clientId: D.configLer('ml_client_id') || process.env.ML_CLIENT_ID || '',
+    clientSecret: D.configLer('ml_client_secret') || process.env.ML_CLIENT_SECRET || '',
+  };
+}
+const urlPublica = () => { const t = servicos.tunel(); return t?.estado === 'online' ? t.url : null; };
+
+// ---------- acesso ao painel ----------
+// Este servidor publica e EDITA anúncios de contas reais. A senha é criada pelo aluno no
+// primeiro acesso; a sessão é um token aleatório que o banco guarda só como hash.
+const COOKIE = 'aula_ml_sess';
+const tokenDoCookie = (req) =>
+  new RegExp(`(?:^|;\\s*)${COOKIE}=([a-f0-9]{64})`).exec(req.headers.cookie || '')?.[1] || null;
+const autorizado = (req) => D.sessaoValida(tokenDoCookie(req));
+const cookieSessao = (token, maxAge = 604800) =>
+  `${COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}`;
+
+// O painel só atende quem está NESTE computador. Host fora da lista barra DNS rebinding;
+// Origin fora da lista barra um site aberto no navegador que tente postar em localhost
+// (inclusive criar a senha antes do aluno, no primeiro acesso).
+const HOST_LOCAL = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i;
+function pedidoLocal(req) {
+  if (!HOST_LOCAL.test(req.headers.host || '')) return false;
+  if (req.method === 'GET' || req.method === 'HEAD') return true;
+  const origem = req.headers.origin;
+  if (!origem) return true; // navegador sempre manda Origin em POST; sem ele é script local
+  // "null" vem de iframe sandbox (ataque) e também de política de privacidade do próprio
+  // navegador. Sec-Fetch-Site é escrito pelo navegador, não pela página: desempata.
+  if (origem === 'null') return ['same-origin', 'none'].includes(req.headers['sec-fetch-site']);
+  try { return HOST_LOCAL.test(new URL(origem).host); } catch { return false; }
+}
+
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+
+// Telas servidas pelo próprio servidor: login, primeiro acesso e retorno do OAuth.
+const ESTILO = `
+  :root{--bg:#f2f3f5;--card:#fff;--ink:#1a1a1a;--muted:#5f6368;--line:#e0e2e6;--brand:#2968c8;
+    --err:#b3261e;--radius:8px}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);min-height:100vh;display:grid;place-items:center;
+    font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding:24px 16px}
+  .cartao{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:32px;width:min(420px,100%)}
+  h1{font-size:19px;margin:0 0 6px}
+  p{margin:0 0 16px;color:var(--muted);font-size:14px}
+  label{font-size:13px;font-weight:600;display:block;margin:16px 0 4px}
+  input{width:100%;padding:10px 12px;border:1px solid #c4c7cc;border-radius:var(--radius);font:inherit}
+  input:focus,button:focus-visible,a:focus-visible{outline:2px solid var(--brand);outline-offset:1px}
+  button{margin-top:20px;width:100%;background:var(--brand);color:#fff;border:0;border-radius:var(--radius);
+    padding:12px;font:inherit;font-weight:600;cursor:pointer}
+  button:hover{filter:brightness(.94)}
+  .erro{color:var(--err);font-size:13px;margin:12px 0 0}
+  .dica{font-size:12px;color:var(--muted);margin:4px 0 0}
+  .passos{display:flex;gap:6px;list-style:none;padding:0;margin:0 0 20px;font-size:12px;color:var(--muted)}
+  .passos li{flex:1;border-top:3px solid var(--line);padding-top:6px}
+  .passos li[aria-current]{border-color:var(--brand);color:var(--ink);font-weight:600}
+  pre{background:#f4f4f5;padding:14px;border-radius:var(--radius);white-space:pre-wrap;font-size:13px}
+  a{color:#1a5fc4}`;
+
+const pagina = (titulo, corpo, codigo = 200) => [codigo, `<!doctype html><html lang="pt-BR"><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(titulo)}</title>
+<style>${ESTILO}</style><body><main class="cartao">${corpo}</main></body></html>`];
+
+const PASSOS = (atual) => `<ol class="passos" aria-label="Etapas da configuração">${
+  ['Criar senha', 'Criar app no ML', 'Conectar conta'].map((p, i) =>
+    `<li${i === atual ? ' aria-current="step"' : ''}>${i + 1}. ${p}</li>`).join('')}</ol>`;
+
+const PAGINA_PRIMEIRO_ACESSO = (erro) => pagina('Primeiro acesso', `${PASSOS(0)}
+<h1>Crie a senha do seu painel</h1>
+<p>Ela protege as contas do Mercado Livre que você conectar. Fica guardada só neste computador, cifrada.</p>
+<form method="POST" action="/primeiro-acesso">
+<label for="s1">Senha</label>
+<input id="s1" name="senha" type="password" minlength="8" required autofocus autocomplete="new-password"
+ aria-describedby="d1${erro ? ' e1' : ''}">
+<p class="dica" id="d1">Mínimo de 8 caracteres.</p>
+<label for="s2">Repita a senha</label>
+<input id="s2" name="confirmacao" type="password" minlength="8" required autocomplete="new-password">
+${erro ? `<p class="erro" id="e1" role="alert">${esc(erro)}</p>` : ''}
+<button>Criar senha e continuar</button></form>`, erro ? 400 : 200);
+
+const PAGINA_LOGIN = (erro) => pagina('Entrar', `<h1>Painel Mercado Livre</h1>
+<p>Digite a senha que você criou no primeiro acesso.</p>
+<form method="POST" action="/login">
+<label for="s">Senha</label>
+<input id="s" name="senha" type="password" autofocus required autocomplete="current-password"
+ ${erro ? 'aria-describedby="e1"' : ''}>
+${erro ? '<p class="erro" id="e1" role="alert">Senha incorreta.</p>' : ''}
+<button>Entrar</button></form>`, erro ? 401 : 200);
+
+// ---------- tokens ----------
+async function renovar(conta) {
+  const { clientId, clientSecret } = credenciais();
+  if (!clientId || !clientSecret || !conta.refresh_token) return conta;
+  const r = await fetch(`${API}/oauth/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+    body: new URLSearchParams({
+      grant_type: 'refresh_token',
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: conta.refresh_token,
+    }),
+  });
+  const t = await r.json();
+  if (!r.ok) {
+    throw Object.assign(new Error(`Não foi possível renovar o acesso de ${conta.nickname}. `
+      + `Reconecte a conta. (${t.error || r.status})`), { status: 401 });
+  }
+  D.contaTokensAtualizar(conta.ml_user_id, t);
+  return D.contaObter(conta.ml_user_id);
+}
+
+// A ML nao tem um campo fixo para a mensagem util: as vezes vem em "message",
+// as vezes em "error", as vezes so dentro de cause[]. E um dos dois costuma ser
+// um codigo (BODY_INVALID_FIELDS) que nao ajuda ninguem. Pegamos a mais descritiva.
+function mensagemDoML(json, fallback) {
+  const candidatos = [json?.error, json?.message,
+    ...(Array.isArray(json?.cause) ? json.cause.map((c) => c?.message) : [])]
+    .filter((t) => typeof t === 'string' && t.trim());
+  const humanas = candidatos.filter((t) => !/^[A-Z][A-Z0-9_]+$/.test(t.trim()));
+  return (humanas.sort((a, b) => b.length - a.length)[0]) || candidatos[0] || fallback;
+}
+
+async function ml(pathname, opts = {}, contaId = null) {
+  let conta = contaId ? D.contaObter(contaId) : D.contaAtiva();
+  if (!conta) throw Object.assign(new Error('Nenhuma conta conectada. Acesse /auth.'), { status: 401 });
+  if (Date.now() > conta.expires_at) conta = await renovar(conta);
+
+  const isForm = opts.body instanceof FormData; // multipart: o fetch monta o boundary
+  const call = (c) => fetch(API + pathname, {
+    ...opts,
+    headers: {
+      Authorization: `Bearer ${c.access_token}`,
+      ...(isForm ? {} : { 'Content-Type': 'application/json' }),
+      Accept: 'application/json',
+      ...(opts.headers || {}),
+    },
+  });
+
+  let res = await call(conta);
+  if (res.status === 401) { conta = await renovar(conta); res = await call(conta); }
+  const body = await res.text();
+  const json = body ? JSON.parse(body) : null;
+  if (!res.ok) throw Object.assign(new Error(mensagemDoML(json, res.statusText)), { status: res.status, body: json });
+  return json;
+}
+
+// Cliente do scraper local. Ele escuta em 127.0.0.1 e dirige um navegador com a
+// sessão logada do vendedor: NUNCA exponha essa porta pelo túnel.
+// A porta é escolhida pelo iniciar.js na hora de subir (a primeira livre a partir de 8100).
+const SCRAPER = () => servicos.scraper()?.url || process.env.SCRAPER_URL || 'http://127.0.0.1:8100';
+const scraperFora = () => {
+  const s = servicos.scraper();
+  const detalhe = s?.estado === 'iniciando' || s?.estado === 'reiniciando'
+    ? 'Ele está subindo agora; tente de novo em alguns segundos.'
+    : s?.erro ? `Motivo: ${s.erro}. Veja a tela Configuração do painel.`
+      : 'Suba o painel com "npm start": ele sobe o scraper junto.';
+  return Object.assign(new Error(`O scraper não respondeu em ${SCRAPER()}. ${detalhe}`), { status: 503 });
+};
+async function scraper(pathname, ms = 120000, opts = {}) {
+  let r;
+  try {
+    r = await fetch(SCRAPER() + pathname, { ...opts, signal: AbortSignal.timeout(ms) });
+  } catch (e) {
+    // demorar não é estar fora do ar: o scraper está de pé, só lento (Mac sobrecarregado)
+    if (e.name === 'TimeoutError') {
+      throw Object.assign(new Error(`O scraper não terminou em ${Math.round(ms / 1000)} s. `
+        + 'Costuma ser o computador sobrecarregado; tente de novo.'), { status: 504 });
+    }
+    throw scraperFora();
+  }
+  const j = await r.json().catch(() => ({ detail: `o scraper respondeu ${r.status} sem JSON` }));
+  if (!r.ok) {
+    const d = j.detail || {};
+    const msg = Array.isArray(d) ? 'pedido inválido para o scraper' : (d.erro || d.acao || j.detail);
+    throw Object.assign(new Error(msg || 'o scraper recusou'),
+      { status: r.status, body: { cause: d } });
+  }
+  return j;
+}
+const scraperPost = (pathname, body, ms) => scraper(pathname, ms, {
+  method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}),
+});
+
+// Só os campos que o scraper conhece passam; ele valida tipo e faixa de novo.
+function acaoNavegador(b) {
+  const out = { tipo: String(b.tipo || '') };
+  if (b.x != null) out.x = Number(b.x);
+  if (b.y != null) out.y = Number(b.y);
+  if (b.dy != null) out.dy = Math.trunc(Number(b.dy));
+  if (b.texto != null) out.texto = String(b.texto);
+  if (b.tecla != null) out.tecla = String(b.tecla);
+  return out;
+}
+
+// Estado da sessão do scraper, lembrado por 10 min. O /status do scraper abre uma listagem
+// no ML: chamar a cada abertura da análise segurava o navegador por 5–10 s (atrasando o
+// "Medir agora") e somava acessos que aumentam o risco de reCAPTCHA. As próprias medições
+// e o desbloqueio atualizam o valor, então ele raramente fica velho.
+const SESSAO_VALIDADE_MS = 10 * 60 * 1000;
+let sessaoScraper = null;
+const lembrarSessao = (sessao, acao = null) => { sessaoScraper = { sessao, acao, em: Date.now() }; };
+
+// Marca, na lista INTEIRA da busca, o que é do próprio vendedor. O JSON da listagem não diz
+// de quem é cada anúncio; a API responde 200 com seller_id para anúncio do vendedor e 403
+// para o de outros (medido), então um multiget em lotes de 20 separa os dois.
+// seu = null e meus = null quando não deu para checar.
+async function classificarBusca(conta, itemId, resultados, posicaoEu) {
+  const ids = [...new Set(resultados.map((r) => r.item_id))].filter((x) => x !== itemId);
+  const lotes = [];
+  for (let i = 0; i < ids.length; i += 20) lotes.push(ids.slice(i, i + 20));
+  let meusIds = null;
+  try {
+    const respostas = await Promise.all(lotes.map((l) =>
+      ml(`/items?ids=${l.join(',')}&attributes=id,seller_id`, {}, conta.ml_user_id)));
+    meusIds = new Set(respostas.flat()
+      .filter((r) => r.code === 200 && Number(r.body?.seller_id) === Number(conta.ml_user_id))
+      .map((r) => r.body.id));
+  } catch (e) {
+    console.warn('[posicao] não deu para checar os anúncios do vendedor:', e.message);
+  }
+  const lista = resultados.map((r) => ({
+    ...r, seu: r.item_id === itemId ? true : (meusIds ? meusIds.has(r.item_id) : null),
+  }));
+  // o próprio anúncio medido entra quando aparece de novo em outra casa (pago e orgânico)
+  const meus = meusIds && lista.filter((r) => r.seu && !(r.item_id === itemId && r.posicao === posicaoEu))
+    .map(({ item_id, posicao, tipo, preco, preco_original, vendidos }) =>
+      ({ item_id, posicao, tipo, preco, preco_original, vendidos }));
+  return { lista, meus };
+}
+
+// Opções de garantia. Não há endpoint que liste: /sites/MLB/sale_terms dá 404 e
+// /categories/{id}/sale_terms dá 403. Os ids abaixo foram lidos dos anúncios reais
+// da conta. O valor que o anúncio já tem é unido a esta lista, então um termo novo
+// do ML aparece mesmo sem estar aqui.
+const GARANTIA_TIPOS = [
+  { id: '2230280', nome: 'Garantia do vendedor' },
+  { id: '2230279', nome: 'Garantia de fábrica' },
+  { id: '6150835', nome: 'Sem garantia' },
+];
+const GARANTIA_UNIDADES = ['dias', 'meses', 'anos'];
+
+function termosDoItem(item) {
+  const tem = Object.fromEntries((item.sale_terms || []).map((t) => [t.id, t]));
+  const tipos = [...GARANTIA_TIPOS];
+  const atual = tem.WARRANTY_TYPE;
+  if (atual?.value_name && !tipos.some((t) => t.nome === atual.value_name)) {
+    tipos.unshift({ id: atual.value_id, nome: atual.value_name });
+  }
+  return [
+    { id: 'WARRANTY_TYPE', name: 'Tipo de garantia', value_type: 'list',
+      valor: atual?.value_name || '', values: tipos.map((t) => t.nome) },
+    { id: 'WARRANTY_TIME', name: 'Tempo de garantia', value_type: 'number_unit',
+      valor: tem.WARRANTY_TIME?.value_name || '', unidades: GARANTIA_UNIDADES,
+      unidade_padrao: 'meses' },
+  ];
+}
+
+const contaOuErro = () => {
+  const c = D.contaAtiva();
+  if (!c) throw Object.assign(new Error('Nenhuma conta conectada. Acesse /auth.'), { status: 401 });
+  return c;
+};
+const siteAtivo = () => D.contaAtiva()?.site_id || SITE_PADRAO;
+const ITEM_ID = /^[A-Z]{3}\d+$/;
+const exigeItemId = (id) => {
+  if (!ITEM_ID.test(id || '')) throw Object.assign(new Error('id de anúncio inválido'), { status: 400 });
+  return id;
+};
+
+// ---------- montagem do payload (lógica testável) ----------
+function buildItem(form) {
+  const errs = [];
+  const title = String(form.title || '').trim();
+  const price = Number(form.price);
+  const quantity = Number(form.quantity);
+
+  if (!title) errs.push('Título é obrigatório.');
+  if (title.length > 60) errs.push('Título passa de 60 caracteres.');
+  if (!form.category_id) errs.push('Categoria é obrigatória.');
+  if (!Number.isFinite(price) || price <= 0) errs.push('Preço deve ser maior que zero.');
+  if (!Number.isInteger(quantity) || quantity < 1) errs.push('Quantidade deve ser um inteiro ≥ 1.');
+
+  const ids = (Array.isArray(form.picture_ids) ? form.picture_ids : [])
+    .map((x) => String(x).trim()).filter(Boolean);
+  const urls = String(form.pictures || '')
+    .split(/[\n,]/).map((s) => s.trim()).filter(Boolean);
+  const ruim = urls.find((u) => !/^https:\/\//i.test(u));
+  if (ruim) errs.push(`Foto precisa ser URL https: "${ruim}"`);
+  const pictures = [...ids.map((id) => ({ id })), ...urls.map((source) => ({ source }))];
+
+  const attributes = Object.entries(form.attributes || {})
+    .filter(([, v]) => String(v ?? '').trim() !== '')
+    .map(([id, value_name]) => ({ id, value_name: String(value_name).trim() }));
+
+  if (errs.length) throw Object.assign(new Error(errs.join(' ')), { status: 400, errors: errs });
+
+  return {
+    title, category_id: form.category_id, price,
+    currency_id: form.currency_id || 'BRL',
+    available_quantity: quantity,
+    buying_mode: 'buy_it_now',
+    condition: form.condition || 'new',
+    listing_type_id: form.listing_type_id || 'gold_special',
+    pictures, attributes,
+    shipping: {
+      mode: form.shipping_mode || 'me2',
+      local_pick_up: !!form.local_pick_up,
+      free_shipping: !!form.free_shipping,
+    },
+  };
+}
+
+// Campos que a API do ML aceita num PUT /items — LISTA FECHADA, medida contra a API real
+// (ver README). Fora daqui o PUT aceita coisa que quebra o anúncio em silêncio.
+// price e available_quantity só passam com o anúncio ATIVO; listing_type_id nunca passa
+// por aqui (tem endpoint próprio, /items/{id}/listing_type).
+function buildEdicao(form) {
+  const out = {};
+  const errs = [];
+  const texto = (v, max, nome, campo) => {
+    const t = String(v).trim();
+    if (!t) { errs.push(`${nome} não pode ficar vazio.`); return; }
+    if (t.length > max) { errs.push(`${nome} passa de ${max} caracteres.`); return; }
+    out[campo] = t;
+  };
+
+  if (form.title !== undefined) texto(form.title, 60, 'Título', 'title');
+  if (form.warranty !== undefined) texto(form.warranty, 255, 'Garantia', 'warranty');
+  if (form.seller_custom_field !== undefined) {
+    const t = String(form.seller_custom_field).trim();
+    if (t.length > 60) errs.push('SKU passa de 60 caracteres.');
+    else out.seller_custom_field = t || null; // vazio limpa o campo
+  }
+
+  if (form.price !== undefined) {
+    const p = Number(form.price);
+    if (!Number.isFinite(p) || p <= 0) errs.push('Preço deve ser maior que zero.');
+    else out.price = p;
+  }
+  if (form.available_quantity !== undefined) {
+    const q = Number(form.available_quantity);
+    if (!Number.isInteger(q) || q < 0) errs.push('Estoque deve ser inteiro ≥ 0.');
+    else out.available_quantity = q;
+  }
+  if (form.status !== undefined) {
+    if (!['active', 'paused', 'closed'].includes(form.status)) errs.push('Status inválido.');
+    else out.status = form.status;
+  }
+  if (form.condition !== undefined) {
+    if (!['new', 'used', 'not_specified'].includes(form.condition)) errs.push('Condição inválida.');
+    else out.condition = form.condition;
+  }
+  if (form.category_id !== undefined) {
+    if (!/^[A-Z]{3}\d+$/.test(String(form.category_id))) errs.push('Categoria inválida.');
+    else out.category_id = String(form.category_id);
+  }
+  if (form.video_id !== undefined) {
+    const v = String(form.video_id || '').trim();
+    out.video_id = v || null; // vazio remove o vídeo
+  }
+  if (Array.isArray(form.picture_ids)) {
+    const ids = form.picture_ids.map((x) => String(x).trim()).filter(Boolean);
+    if (!ids.length) errs.push('O anúncio precisa de ao menos uma foto.');
+    else out.pictures = ids.map((id) => ({ id })); // a ordem aqui é a ordem no anúncio
+  }
+  if (form.attributes && typeof form.attributes === 'object') {
+    const attrs = Object.entries(form.attributes)
+      .filter(([, v]) => String(v ?? '').trim() !== '')
+      .map(([id, value_name]) => ({ id, value_name: String(value_name).trim() }));
+    if (attrs.length) out.attributes = attrs;
+  }
+  // sale_terms: garantia e condições de venda. Medido: o PUT aceita.
+  if (form.sale_terms && typeof form.sale_terms === 'object') {
+    const termos = Object.entries(form.sale_terms)
+      .filter(([, v]) => String(v ?? '').trim() !== '')
+      .map(([id, value_name]) => ({ id, value_name: String(value_name).trim() }));
+    if (termos.length) out.sale_terms = termos;
+  }
+  if (form.shipping && typeof form.shipping === 'object') {
+    const modo = form.shipping.mode;
+    if (modo && !['me2', 'not_specified', 'custom'].includes(modo)) errs.push('Modo de envio inválido.');
+    else {
+      out.shipping = {
+        ...(modo ? { mode: modo } : {}),
+        free_shipping: !!form.shipping.free_shipping,
+        local_pick_up: !!form.shipping.local_pick_up,
+      };
+    }
+  }
+
+  if (errs.length) throw Object.assign(new Error(errs.join(' ')), { status: 400, errors: errs });
+  if (!Object.keys(out).length) throw Object.assign(new Error('Nada para alterar.'), { status: 400 });
+  return out;
+}
+
+// ---------- configuração: app do DevCenter x URL do túnel ----------
+// O que o ML tem cadastrado, lido com as credenciais do app. Cache curto: a tela de
+// configuração e o aviso de todas as páginas perguntam o tempo todo.
+const CACHE_APP_MS = 60000;
+let cacheApp = { chave: null, em: 0, app: null, erro: null, codigo: null };
+
+async function appDoML(forcar = false) {
+  const { clientId, clientSecret } = credenciais();
+  if (!clientId || !clientSecret) return { app: null, erro: null, codigo: null };
+  const chave = crypto.createHash('sha256').update(clientId + '\0' + clientSecret).digest('hex');
+  if (!forcar && cacheApp.chave === chave && Date.now() - cacheApp.em < CACHE_APP_MS) return cacheApp;
+  try {
+    cacheApp = { chave, em: Date.now(), app: await APP.lerApp(clientId, clientSecret), erro: null, codigo: null };
+  } catch (e) {
+    cacheApp = { chave, em: Date.now(), app: null, erro: e.message, codigo: e.codigo || null };
+  }
+  return cacheApp;
+}
+
+async function situacaoAtual(forcar = false) {
+  const atual = urlPublica();
+  const { app, erro, codigo } = await appDoML(forcar);
+  const s = APP.situacao({ urlAtual: atual, app, confirmada: D.configLer('url_confirmada') });
+  // Conferido no próprio ML: vira a referência para quando o ML não puder ser consultado.
+  if (s.estado === 'confere' && s.fonte === 'ml' && D.configLer('url_confirmada') !== atual) {
+    D.configGravar('url_confirmada', atual);
+  }
+  return { ...s, erro_ml: erro, codigo_ml: codigo };
+}
+
+// Resumo que toda página consulta para decidir se mostra o aviso do topo.
+async function resumoConfig(forcar = false) {
+  const { clientId, clientSecret } = credenciais();
+  const tunel = servicos.tunel();
+  const situacao = await situacaoAtual(forcar);
+  const contas = D.contasListar().length;
+  let pendente = null;
+  if (!clientId || !clientSecret) pendente = 'credenciais';
+  else if (situacao.estado === 'sem_tunel') pendente = 'tunel';
+  else if (situacao.estado === 'divergente') pendente = 'url_mudou';
+  else if (situacao.estado === 'nao_cadastrado') pendente = 'url';
+  else if (!contas) pendente = 'conta';
+  return { pendente, situacao, tunel, contas, tem_credenciais: !!(clientId && clientSecret) };
+}
+
+// state do OAuth fica no servidor, não em cookie: o retorno chega pelo endereço do túnel,
+// que não enxerga os cookies de localhost. Uso único, validade de 15 minutos.
+const ESTADOS_OAUTH = new Map();
+const VALIDADE_STATE_MS = 15 * 60 * 1000;
+function novoEstadoOAuth(dados) {
+  for (const [k, v] of ESTADOS_OAUTH) if (Date.now() - v.criado > VALIDADE_STATE_MS) ESTADOS_OAUTH.delete(k);
+  const state = crypto.randomBytes(16).toString('hex');
+  ESTADOS_OAUTH.set(state, { ...dados, criado: Date.now() });
+  return state;
+}
+function consumirEstadoOAuth(state) {
+  const d = ESTADOS_OAUTH.get(state);
+  ESTADOS_OAUTH.delete(state);
+  return d && Date.now() - d.criado <= VALIDADE_STATE_MS ? d : null;
+}
+
+// ---------- rotas de caminho fixo ----------
+const ATRIBUTOS_LISTA = ['id', 'title', 'price', 'available_quantity', 'sold_quantity', 'status',
+  'sub_status', 'secure_thumbnail', 'thumbnail', 'permalink', 'listing_type_id', 'health',
+  'category_id', 'date_created', 'shipping', 'family_name', 'variations'].join(',');
+
+const erro400 = (msg) => Object.assign(new Error(msg), { status: 400 });
+
+const routes = {
+  'GET /api/status': async () => {
+    const c = contaOuErro();
+    return { nickname: c.nickname, id: c.ml_user_id, site_id: c.site_id };
+  },
+
+  // ----- configuração (primeiro acesso) -----
+  'GET /api/config': async (url) => {
+    const r = await resumoConfig(url.searchParams.get('forcar') === '1');
+    const { app } = await appDoML();
+    return {
+      ...r,
+      app_id: credenciais().clientId || null,
+      app: app ? { nome: app.nome, fluxos: app.fluxos, use_pkce: app.use_pkce,
+        bloqueado: app.bloqueado, topicos: app.topicos } : null,
+      historico_urls: D.urlsPublicasHistorico(5),
+      scraper: servicos.scraper(),
+      scraper_gerenciado: !!servicos.reiniciarScraper,
+    };
+  },
+
+  'GET /api/config/resumo': async () => {
+    const r = await resumoConfig();
+    return { pendente: r.pendente, url: r.tunel?.url ?? null, anterior: r.situacao.anterior ?? null,
+      tunel: r.tunel?.estado ?? null };
+  },
+
+  // Valida no ML ANTES de gravar: App ID e chave trocados são o erro nº 1 da aula.
+  'POST /api/config/credenciais': async (_u, body) => {
+    const appId = String(body.app_id || '').trim();
+    const secret = String(body.secret || '').trim();
+    if (!/^\d{4,25}$/.test(appId)) throw erro400('O App ID tem só números. Copie de novo do DevCenter.');
+    if (secret.length < 16 || secret.length > 128 || /\s/.test(secret)) {
+      throw erro400('A chave secreta não parece certa. Copie de novo do DevCenter, sem espaços.');
+    }
+    const avisos = [];
+    try {
+      await APP.tokenDoApp(appId, secret);
+    } catch (e) {
+      if (e.codigo === 'unauthorized_client') avisos.push(e.message);
+      else if (!e.codigo) avisos.push(`Não deu para validar com o Mercado Livre agora (${e.message}). Guardei assim mesmo.`);
+      else throw erro400(e.message);
+    }
+    const anterior = credenciais().clientId;
+    if (anterior && anterior !== appId && D.contasListar().length) {
+      avisos.push('As contas conectadas com o aplicativo anterior vão precisar ser conectadas de novo.');
+    }
+    D.configGravar('ml_client_id', appId);
+    D.configGravar('ml_client_secret', secret);
+    return { ok: true, avisos, ...(await resumoConfig(true)) };
+  },
+
+  // Plano B quando o ML não deixa ler o cadastro: o aluno afirma que atualizou.
+  'POST /api/config/confirmar-url': async () => {
+    const u = urlPublica();
+    if (!u) throw Object.assign(new Error('O túnel está fora do ar agora.'), { status: 409 });
+    D.configGravar('url_confirmada', u);
+    return resumoConfig(true);
+  },
+
+  'POST /api/config/senha': async (_u, body) => {
+    if (!D.senhaConfere(String(body.atual || ''))) throw erro400('Senha atual incorreta.');
+    const nova = String(body.nova || '');
+    if (nova.length < 8) throw erro400('A senha nova precisa de ao menos 8 caracteres.');
+    D.senhaDefinir(nova); // derruba todas as sessões, inclusive esta
+    return { ok: true, relogar: true };
+  },
+
+  'POST /api/scraper/reiniciar': async () => {
+    if (!servicos.reiniciarScraper) {
+      throw Object.assign(new Error('O scraper não foi iniciado por este painel. Suba tudo com "npm start".'), { status: 409 });
+    }
+    servicos.reiniciarScraper();
+    return servicos.scraper();
+  },
+  'GET /api/accounts': async () => ({
+    ativa: D.contaAtivaId() ? Number(D.contaAtivaId()) : null,
+    contas: D.contasListar(),
+  }),
+  'POST /api/accounts/active': async (_u, body) => {
+    const id = Number(body.ml_user_id);
+    if (!Number.isInteger(id)) throw Object.assign(new Error('ml_user_id inválido'), { status: 400 });
+    D.contaAtivaDefinir(id);
+    const c = D.contaObter(id);
+    return { ativa: id, nickname: c.nickname, site_id: c.site_id };
+  },
+  'POST /api/accounts/remove': async (_u, body) => {
+    const id = Number(body.ml_user_id);
+    if (!Number.isInteger(id)) throw Object.assign(new Error('ml_user_id inválido'), { status: 400 });
+    D.contaRemover(id); // só esquece o token aqui; a permissão segue viva no ML
+    return { removida: id, ativa: D.contaAtivaId() ? Number(D.contaAtivaId()) : null };
+  },
+
+  // ----- listagem -----
+  'GET /api/items': async (url) => {
+    const conta = contaOuErro();
+    const qs = new URLSearchParams({
+      limit: String(Math.min(20, Math.max(1, Number(url.searchParams.get('limit')) || 20))),
+      offset: String(Math.max(0, Number(url.searchParams.get('offset')) || 0)),
+    });
+    const status = url.searchParams.get('status');
+    if (status && ['active', 'paused', 'closed', 'under_review'].includes(status)) qs.set('status', status);
+    // Sem isto o padrao do ML e stop_time_asc, que joga os anuncios mortos na 1a pagina
+    // — e o vendedor conclui que as visitas estao zeradas.
+    const ORDENS = ['stop_time_asc','stop_time_desc','start_time_asc','start_time_desc',
+      'available_quantity_asc','available_quantity_desc','sold_quantity_asc','sold_quantity_desc',
+      'price_asc','price_desc','last_updated_desc','last_updated_asc'];
+    const ordem = url.searchParams.get('sort');
+    qs.set('orders', ORDENS.includes(ordem) ? ordem : 'last_updated_desc');
+    const q = (url.searchParams.get('q') || '').trim();
+    if (q) qs.set('q', q);
+
+    const busca = await ml(`/users/${conta.ml_user_id}/items/search?${qs}`);
+    const ids = busca.results || [];
+    const total = busca.paging?.total ?? 0;
+    if (!ids.length) return { total, offset: Number(qs.get('offset')), itens: [] };
+
+    const multi = await ml(`/items?ids=${ids.join(',')}&attributes=${ATRIBUTOS_LISTA}`);
+    // /visits/items aceita UM id por chamada — daí o leque em paralelo, não um multiget.
+    const visitas = Object.fromEntries(await Promise.all(ids.map(async (id) => {
+      const v = await ml(`/items/${id}/visits/time_window?last=30&unit=day`).catch(() => null);
+      return [id, v?.total_visits ?? null];
+    })));
+
+    const itens = multi.filter((x) => x.code === 200).map((x) => ({
+      ...x.body, visitas_30d: visitas[x.body.id] ?? null,
+      tem_familia: !!x.body.family_name, tem_variacoes: (x.body.variations || []).length > 0,
+    }));
+    for (const it of itens) D.produtoSincronizar(conta.ml_user_id, it);
+    return { total, offset: Number(qs.get('offset')), itens };
+  },
+
+  'GET /api/products': async () => {
+    const c = D.contaAtiva();
+    return c ? D.produtosListar(c.ml_user_id) : [];
+  },
+  'GET /api/notifications': async () => D.notificacoesListar(),
+
+  // ----- posição na listagem (scraper local) -----
+  // A API oficial não entrega: /sites/{site}/search responde 403. Quem mede é o
+  // scraper, que roda em 127.0.0.1 — só funciona com os dois na mesma máquina.
+  // ?forcar=1 ignora o que está lembrado e abre a listagem de teste de novo.
+  'GET /api/scraper': async (url) => {
+    try {
+      await scraper('/health', 5000);
+      const nav = await scraper('/navegador', 5000);  // não toca no ML
+      if (nav.estado !== 'fechado') {
+        return { ligado: true, sessao: 'em_uso', acao: 'conclua ou feche na aba Navegador do painel' };
+      }
+      const fresca = sessaoScraper && Date.now() - sessaoScraper.em < SESSAO_VALIDADE_MS;
+      if (!fresca || url.searchParams.get('forcar')) {
+        const s = await scraper('/status', 60000);
+        if (s.sessao === 'em_uso') return { ligado: true, sessao: 'em_uso', acao: s.acao || null };
+        lembrarSessao(s.sessao, s.acao || null);
+      }
+      return { ligado: true, sessao: sessaoScraper.sessao, acao: sessaoScraper.acao };
+    } catch (e) {
+      return { ligado: false, motivo: e.message };
+    }
+  },
+
+  // ----- navegador do scraper: uma PESSOA faz login, 2FA ou reCAPTCHA pelo painel -----
+  // O painel só repassa cliques e teclas e devolve a tela (GET /api/navegador/tela,
+  // tratado antes do despacho por ser binário). A porta do scraper segue fechada.
+  'GET /api/navegador': async () => scraper('/navegador', 5000),
+  'POST /api/navegador/abrir': async (_u, body) => scraperPost('/navegador/abrir',
+    { destino: body.destino === 'login' ? 'login' : 'desbloquear' }, 15000),
+  'POST /api/navegador/acao': async (_u, body) => scraperPost('/navegador/acao', acaoNavegador(body), 65000),
+  'POST /api/navegador/concluir': async () => {
+    const r = await scraperPost('/navegador/concluir', {}, 130000);
+    if (r.liberado) lembrarSessao('valida');
+    return r;
+  },
+  'POST /api/navegador/fechar': async () => scraperPost('/navegador/fechar', {}, 65000),
+
+  'GET /api/keywords': async (url) => {
+    const id = exigeItemId(url.searchParams.get('item'));
+    return D.palavrasListar(id);
+  },
+
+  'POST /api/keywords': async (_u, body) => {
+    const conta = contaOuErro();
+    const id = exigeItemId(body.item);
+    const termo = String(body.termo || '').trim().toLowerCase();
+    if (termo.length < 2) throw Object.assign(new Error('Termo curto demais.'), { status: 400 });
+    if (termo.length > 80) throw Object.assign(new Error('Termo longo demais.'), { status: 400 });
+    D.palavraAdicionar(id, conta.ml_user_id, termo);
+    return D.palavrasListar(id);
+  },
+
+  'POST /api/keywords/remove': async (_u, body) => {
+    const id = exigeItemId(body.item);
+    D.palavraRemover(id, String(body.termo || '').trim().toLowerCase());
+    return D.palavrasListar(id);
+  },
+
+  // Mede agora. ~3 s por página de listagem — o scraper serializa, não adianta paralelizar.
+  'POST /api/posicao': async (_u, body) => {
+    const id = exigeItemId(body.item);
+    const termo = String(body.termo || '').trim().toLowerCase();
+    if (termo.length < 2) throw Object.assign(new Error('Termo curto demais.'), { status: 400 });
+    const paginas = Math.min(3, Math.max(1, Number(body.paginas) || 1));
+    const conta = contaOuErro();
+    let r;
+    try {
+      r = await scraper(`/posicao?item=${id}&q=${encodeURIComponent(termo)}&paginas=${paginas}`);
+    } catch (e) {
+      // só o 503 que o scraper devolve ao ver o bloqueio; lentidão (504) e scraper fora
+      // do ar (503 sem corpo) não dizem nada sobre a sessão
+      if (e.status === 503 && e.body?.cause?.acao) lembrarSessao('bloqueada', e.body.cause.acao);
+      throw e;
+    }
+    lembrarSessao('valida');
+    const { resultados = [], ...medicao } = r;
+    Object.assign(medicao, await classificarBusca(conta, id, resultados, medicao.posicao));
+    D.posicaoSalvar(id, termo, medicao);
+    return { ...medicao, historico: D.posicoesHistorico(id, termo) };
+  },
+
+  // ----- Mercado Ads -----
+  'GET /api/ads/status': async () => {
+    try {
+      const a = await ml('/advertising/advertisers?product_id=PADS', { headers: { 'api-version': '2' } });
+      return { habilitado: true, advertisers: a.advertisers || a };
+    } catch (e) {
+      if (e.status === 404) {
+        return {
+          habilitado: false,
+          motivo: 'Esta conta não tem anunciante no Mercado Ads. Ative a publicidade no '
+            + 'painel do Mercado Livre (Anúncios → Publicidade) e recarregue.',
+        };
+      }
+      throw e;
+    }
+  },
+
+  // ----- apoio ao cadastro -----
+  'GET /api/predict': async (url) => {
+    const q = url.searchParams.get('q') || '';
+    if (!q.trim()) return [];
+    const r = await fetch(`${API}/sites/${siteAtivo()}/domain_discovery/search?limit=6&q=${encodeURIComponent(q)}`);
+    return r.json();
+  },
+  'GET /api/listing-types': async () => ml(`/sites/${siteAtivo()}/listing_types`),
+  'GET /api/category': async (url) => {
+    const id = url.searchParams.get('id');
+    if (!ITEM_ID.test(id || '')) throw Object.assign(new Error('category id inválido'), { status: 400 });
+    const [cat, attrs] = await Promise.all([
+      fetch(`${API}/categories/${id}`).then((r) => r.json()),
+      fetch(`${API}/categories/${id}/attributes`).then((r) => r.json()),
+    ]);
+    // Devolve TUDO que dá para editar, não só os obrigatórios: numa categoria de
+    // informática são 6 obrigatórios para 54 editáveis. Quem decide o que mostrar é
+    // a tela — a de publicar usa só os obrigatórios, a de editar usa todos.
+    const editaveis = attrs.filter((a) => !a.tags?.hidden && !a.tags?.read_only);
+    return {
+      name: cat.name,
+      path: (cat.path_from_root || []).map((p) => p.name).join(' › '),
+      settings: cat.settings,
+      total_atributos: attrs.length,
+      attributes: editaveis.map((a) => ({
+        id: a.id,
+        name: a.name,
+        value_type: a.value_type,
+        obrigatorio: !!(a.tags?.required || a.tags?.catalog_required),
+        condicional: !!a.tags?.conditional_required,
+        dica: a.hint || null,
+        values: (a.values || []).slice(0, 200).map((v) => v.name),
+        unidades: (a.allowed_units || []).map((u) => u.id),
+        unidade_padrao: a.default_unit || (a.allowed_units || [])[0]?.id || null,
+      })),
+    };
+  },
+
+  'POST /api/items': async (_u, body) => {
+    const conta = contaOuErro();
+    const payload = buildItem(body);
+    const item = await ml('/items', { method: 'POST', body: JSON.stringify(payload) });
+    const desc = String(body.description || '').trim();
+    let description_ok = null;
+    if (desc) {
+      try {
+        await ml(`/items/${item.id}/description`, { method: 'POST', body: JSON.stringify({ plain_text: desc }) });
+        description_ok = true;
+      } catch { description_ok = false; }
+    }
+    D.produtoSalvar(conta.ml_user_id, item, payload);
+    return { id: item.id, permalink: item.permalink, status: item.status, description_ok, conta: conta.nickname };
+  },
+};
+
+// ---------- rotas com parâmetro no caminho ----------
+const rotasParam = [
+  { m: 'GET', re: /^\/api\/items\/([A-Z]{3}\d+)$/, fn: async ([id]) => {
+    exigeItemId(id);
+    const item = await ml(`/items/${id}`);
+    const descricao = await ml(`/items/${id}/description`).then((d) => d.plain_text || '').catch(() => '');
+    const visitas = await ml(`/items/${id}/visits/time_window?last=30&unit=day`).catch(() => null);
+    // o que a ML usa para travar campos — medido, nao suposto:
+    //   family_name presente  -> titulo nao muda
+    //   variations com itens   -> preco e estoque vivem na variacao
+    return { ...item, descricao, visitas_30d: visitas?.total_visits ?? null,
+      tem_familia: !!item.family_name, tem_variacoes: (item.variations || []).length > 0,
+      termos: termosDoItem(item) };
+  } },
+
+  { m: 'PUT', re: /^\/api\/items\/([A-Z]{3}\d+)$/, fn: async ([id], body) => {
+    const conta = contaOuErro();
+    const mudancas = buildEdicao(body);
+    const item = await ml(`/items/${exigeItemId(id)}`, { method: 'PUT', body: JSON.stringify(mudancas) });
+    D.produtoSincronizar(conta.ml_user_id, item);
+    return { id: item.id, ...mudancas, status: item.status, permalink: item.permalink };
+  } },
+
+  { m: 'PUT', re: /^\/api\/items\/([A-Z]{3}\d+)\/description$/, fn: async ([id], body) => {
+    const texto = String(body.plain_text ?? '').trim();
+    if (!texto) throw Object.assign(new Error('Descrição vazia.'), { status: 400 });
+    await ml(`/items/${exigeItemId(id)}/description`, {
+      method: 'PUT', body: JSON.stringify({ plain_text: texto }),
+    });
+    return { id, ok: true };
+  } },
+
+  // health + o que o ML sugere melhorar no anúncio
+  { m: 'GET', re: /^\/api\/items\/([A-Z]{3}\d+)\/quality$/, fn: async ([id]) =>
+    ml(`/items/${exigeItemId(id)}/health/actions`).catch(async () => ({
+      health: (await ml(`/items/${id}?attributes=health`)).health, actions: [],
+    })) },
+
+  // Painel do anúncio. TUDO na mesma janela de dias — misturar janelas (pedidos de
+  // 5 meses sobre visitas de 30 dias) infla a conversão em vezes, não em pontos.
+  // Limites medidos na API: série diária de visitas vai até 150 dias; /visits/items
+  // ignora as datas e sempre devolve o total histórico.
+  { m: 'GET', re: /^\/api\/items\/([A-Z]{3}\d+)\/analytics$/, fn: async ([id], _b, url) => {
+    exigeItemId(id);
+    const conta = contaOuErro();
+    const dias = [30, 60, 90, 150].includes(Number(url?.searchParams.get('dias')))
+      ? Number(url.searchParams.get('dias')) : 30;
+    const ate = new Date(), de = new Date(Date.now() - dias * 864e5);
+    const dia = (d) => d.toISOString().slice(0, 10);
+    const stamp = (d, fim) => d.toISOString().slice(0, 10) + (fim ? 'T23:59:59.000-00:00' : 'T00:00:00.000-00:00');
+    const nada = () => null;
+    const janela = `&order.date_created.from=${stamp(de)}&order.date_created.to=${stamp(ate, true)}`;
+
+    const [item, visitas, historico, perguntas, avaliacoes, ads] = await Promise.all([
+      ml(`/items/${id}`),
+      ml(`/items/${id}/visits/time_window?last=${dias}&unit=day`).catch(nada),
+      ml(`/visits/items?ids=${id}&date_from=${dia(de)}&date_to=${dia(ate)}`).catch(nada),
+      ml(`/questions/search?item=${id}&limit=50`).catch(nada),
+      ml(`/reviews/item/${id}`).catch(nada),
+      ml(`/advertising/product_ads/ads/${id}`, { headers: { 'api-version': '2' } }).catch(nada),
+    ]);
+
+    // Pedidos DA JANELA. paging.total já é exato; as páginas servem ao faturamento.
+    const TETO = 200;
+    let pedidos = [], total_pedidos = 0, parcial = false;
+    try {
+      const base = `/orders/search?seller=${conta.ml_user_id}&q=${id}${janela}&sort=date_desc`;
+      const p1 = await ml(`${base}&limit=50`);
+      total_pedidos = p1.paging?.total ?? 0;
+      pedidos = p1.results || [];
+      for (let off = 50; off < Math.min(total_pedidos, TETO); off += 50) {
+        pedidos = pedidos.concat((await ml(`${base}&limit=50&offset=${off}`)).results || []);
+      }
+      parcial = total_pedidos > TETO;
+    } catch { total_pedidos = 0; }
+
+    // "q" é busca textual: confere o item antes de somar dinheiro.
+    const meus = pedidos.filter((o) => (o.order_items || []).some((oi) => oi.item?.id === id));
+    const faturamento = meus.reduce((s, o) => s + (o.total_amount || 0), 0);
+    const unidades = meus.reduce((s, o) => s + (o.order_items || [])
+      .filter((oi) => oi.item?.id === id).reduce((u, oi) => u + (oi.quantity || 0), 0), 0);
+
+    const custo = await ml(`/sites/${item.site_id}/listing_prices?price=${item.price}`
+      + `&listing_type_id=${item.listing_type_id}&category_id=${item.category_id}`).catch(nada);
+    const tendencias = await ml(`/trends/${item.site_id}/${item.category_id}`).catch(nada);
+
+    const notas = (avaliacoes?.reviews || []).map((r) => r.rate).filter(Number.isFinite);
+    const serie = (visitas?.results || []).map((d) => ({ data: d.date.slice(0, 10), total: d.total }));
+
+    return {
+      janela: { dias, de: dia(de), ate: dia(ate) },
+      item: {
+        id: item.id, titulo: item.title, preco: item.price, moeda: item.currency_id,
+        status: item.status, sub_status: item.sub_status, estoque: item.available_quantity,
+        vendidos: item.sold_quantity, health: item.health, tipo: item.listing_type_id,
+        criado_em: item.date_created, permalink: item.permalink,
+        thumb: (item.secure_thumbnail || item.thumbnail || '').replace(/^http:/, 'https:'),
+        catalogo: !!item.catalog_listing, frete_gratis: !!item.shipping?.free_shipping,
+      },
+      visitas: {
+        janela: visitas?.total_visits ?? null,
+        historico: historico?.[id] ?? null,   // a API ignora as datas aqui: é o total de sempre
+        serie,
+        pico: serie.reduce((a, b) => (a && a.total >= b.total ? a : b), null),
+      },
+      vendas: {
+        pedidos: total_pedidos, unidades, faturamento, parcial,
+        ticket_medio: meus.length ? faturamento / meus.length : null,
+        conversao: visitas?.total_visits ? total_pedidos / visitas.total_visits : null,
+        vendidos_historico: item.sold_quantity,
+        ultimos: meus.slice(0, 5).map((o) => ({
+          id: o.id, data: o.date_created, total: o.total_amount, status: o.status,
+        })),
+      },
+      custo: custo ? {
+        taxa_venda: custo.sale_fee_amount,
+        taxa_percentual: item.price ? custo.sale_fee_amount / item.price : null,
+        taxa_anuncio: custo.listing_fee_amount,
+        exposicao: custo.listing_exposure,
+        liquido: item.price - (custo.sale_fee_amount || 0),
+      } : null,
+      perguntas: perguntas ? {
+        total: perguntas.total ?? 0,
+        sem_resposta: (perguntas.questions || []).filter((q) => q.status === 'UNANSWERED').length,
+      } : null,
+      avaliacoes: avaliacoes ? {
+        total: avaliacoes.paging?.total ?? 0,
+        nota: notas.length ? notas.reduce((a, b) => a + b, 0) / notas.length : null,
+      } : null,
+      ads: ads ? { status: ads.status, campanha: ads.campaign_id, grupo: ads.ad_group_id } : null,
+      tendencias: (tendencias || []).slice(0, 8).map((t) => t.keyword),
+    };
+  } },
+
+  // tipo de anúncio tem endpoint próprio: o PUT /items recusa listing_type_id
+  { m: 'GET', re: /^\/api\/items\/([A-Z]{3}\d+)\/upgrades$/, fn: async ([id]) =>
+    ml(`/items/${exigeItemId(id)}/available_upgrades`) },
+
+  { m: 'POST', re: /^\/api\/items\/([A-Z]{3}\d+)\/listing-type$/, fn: async ([id], body) => {
+    const tipo = String(body.listing_type_id || '').trim();
+    if (!/^[a-z_]+$/.test(tipo)) throw Object.assign(new Error('Tipo de anúncio inválido.'), { status: 400 });
+    await ml(`/items/${exigeItemId(id)}/listing_type`, { method: 'POST', body: JSON.stringify({ id: tipo }) });
+    return { id, listing_type_id: tipo };
+  } },
+
+  // Ads: repasse restrito a /advertising/*. Não invento caminho de campanha —
+  // a ML muda esses endpoints, e a conta aqui não tem anunciante para eu validar.
+  { m: 'GET', re: /^\/api\/ads\/(advertising\/.+)$/, fn: async ([resto]) =>
+    ml('/' + resto, { headers: { 'api-version': '2' } }) },
+];
+
+// ---------- HTTP ----------
+// Referrer-Policy "same-origin", NUNCA "no-referrer": com no-referrer o navegador manda
+// Origin: null no POST do formulário de login, e a checagem de origem recusa o próprio aluno.
+// Medido em 19/09/2026 com Chromium; o teste com curl não pega (curl manda o Origin que quiser).
+const SEGURANCA = { 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY', 'Referrer-Policy': 'same-origin' };
+const enviarJson = (res, code, obj, extra = {}) => {
+  res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', ...SEGURANCA, ...extra });
+  res.end(JSON.stringify(obj));
+};
+const enviarHtml = (res, [code, html], extra = {}) => {
+  res.writeHead(code, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', ...SEGURANCA, ...extra });
+  res.end(html);
+};
+const redirecionar = (res, destino, extra = {}) => { res.writeHead(302, { Location: destino, ...extra }); res.end(); };
+
+async function lerCorpo(req, max = 64 * 1024) {
+  const chunks = []; let size = 0;
+  for await (const c of req) {
+    size += c.length;
+    if (size > max) throw Object.assign(new Error('corpo grande demais'), { status: 413 });
+    chunks.push(c);
+  }
+  return Buffer.concat(chunks).toString();
+}
+
+function falhaInterna(res, e) {
+  console.error('[erro]', e);
+  if (!res.headersSent) enviarJson(res, e.status || 500, { error: e.message || 'erro interno' });
+  else res.end();
+}
+
+// ---------- servidor PÚBLICO: o que o túnel expõe na internet ----------
+// Só estes caminhos. Qualquer outro dá 404: tela, API e scraper não saem daqui.
+async function tratarPublico(req, res) {
+  const url = new URL(req.url, 'http://publico');
+  const send = (code, obj) => enviarJson(res, code, obj);
+
+  if (url.pathname === '/saude') return send(200, { ok: true, app: 'aula-ml' }); // autoteste do túnel
+
+  // Webhook do Mercado Livre: quem chama é a ML, não uma pessoa.
+  if (url.pathname === '/webhook') {
+    if (req.method === 'GET') return send(200, { ok: true });
+    if (req.method !== 'POST') return send(405, { error: 'use POST' });
+    try {
+      const cru = await lerCorpo(req);
+      let nota = null;
+      try { nota = JSON.parse(cru); } catch {} // vem de fora: é dado, nunca comando
+      D.notificacaoSalvar(nota, cru);
+    } catch (e) {
+      console.error('webhook:', e.message);
+    }
+    return send(200, { ok: true }); // erro faz a ML reenviar e acabar desativando a URL
+  }
+
+  if (url.pathname === '/callback' && req.method === 'GET') return callbackOAuth(req, res, url);
+
+  if (url.pathname === '/' && req.method === 'GET') {
+    return enviarHtml(res, pagina('Endereço de retorno', `<h1>Este endereço só recebe o retorno do Mercado Livre</h1>
+<p>Chegam aqui o login da conta (<code>/callback</code>) e as notificações (<code>/webhook</code>).
+O painel roda no computador de quem o instalou, em <code>http://localhost:${PORT}</code>.</p>`));
+  }
+  return send(404, { error: 'not found' });
+}
+
+// Retorno do OAuth. Chega pelo endereço do túnel, então não vê os cookies do painel:
+// quem prova que o pedido nasceu aqui é o state guardado no servidor pelo /auth.
+async function callbackOAuth(req, res, url) {
+  const st = consumirEstadoOAuth(url.searchParams.get('state') || '');
+  const voltar = st?.origem || `http://localhost:${PORT}`;
+  const falha = (titulo, detalhe, code = 400) => enviarHtml(res, pagina(titulo, `<h1>${esc(titulo)}</h1>
+<pre>${esc(detalhe)}</pre><p><a href="${esc(voltar)}/configuracao.html">Voltar ao painel</a></p>`, code));
+
+  const erro = url.searchParams.get('error');
+  if (erro) {
+    return falha('O Mercado Livre recusou a autorização',
+      `error: ${erro}\nerror_description: ${url.searchParams.get('error_description') || '(não informado)'}`);
+  }
+  if (!st) {
+    return falha('Autorização expirada ou desconhecida', 'Este retorno não corresponde a um "Conectar conta" '
+      + 'feito pelo painel nos últimos 15 minutos (ou o painel foi reiniciado no meio).\n'
+      + 'Volte ao painel e clique em "Conectar conta" de novo.');
+  }
+  const code = url.searchParams.get('code');
+  if (!code) return falha('Retorno sem código', 'O Mercado Livre não enviou "code". Comece de novo pelo painel.');
+  const { clientId, clientSecret } = credenciais();
+  try {
+    const r = await fetch(`${API}/oauth/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code', client_id: clientId, client_secret: clientSecret, code,
+        redirect_uri: st.redirect, // tem de ser a MESMA enviada no /auth
+        ...(st.verifier ? { code_verifier: st.verifier } : {}),
+      }),
+    });
+    const t = await r.json();
+    if (!r.ok) return falha('Falha ao trocar o código por token', JSON.stringify(t, null, 2));
+    // é a ML que diz de quem é o token — é isso que separa as contas
+    const meRes = await fetch(`${API}/users/me`, { headers: { Authorization: `Bearer ${t.access_token}` } });
+    const me = await meRes.json();
+    if (!meRes.ok) return falha('Token obtido, mas /users/me falhou', JSON.stringify(me, null, 2));
+    D.contaSalvar(t, me); // grava só id, nickname e site — nada de CPF, e-mail ou endereço
+    D.contaAtivaDefinir(me.id);
+    return redirecionar(res, `${voltar}/configuracao.html?conectado=1`);
+  } catch (e) { return falha('Erro inesperado no retorno', e.message, 500); }
+}
+
+// ---------- servidor do PAINEL: só este computador ----------
+const PUBLIC = path.join(__dirname, 'public');
+const TIPOS = {
+  '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png',
+  '.ico': 'image/x-icon', '.json': 'application/json; charset=utf-8',
+};
+
+async function tratarPainel(req, res) {
+  if (!pedidoLocal(req)) {
+    return enviarJson(res, 403, { error: 'O painel só atende quem está neste computador (localhost).' });
+  }
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  const send = (code, obj) => enviarJson(res, code, obj);
+
+  // O iniciar.js usa para não subir duas cópias. Não revela nada.
+  if (url.pathname === '/api/ping') return send(200, { ok: true, app: 'aula-ml' });
+
+  // Primeiro acesso: o aluno cria a própria senha. Some depois que ela existe.
+  const temSenha = D.senhaDefinida();
+  if (url.pathname === '/primeiro-acesso') {
+    if (temSenha) return redirecionar(res, '/login');
+    if (req.method === 'POST') {
+      const f = new URLSearchParams(await lerCorpo(req, 4096));
+      const senha = f.get('senha') || '';
+      if (senha.length < 8) return enviarHtml(res, PAGINA_PRIMEIRO_ACESSO('A senha precisa de ao menos 8 caracteres.'));
+      if (senha !== (f.get('confirmacao') || '')) return enviarHtml(res, PAGINA_PRIMEIRO_ACESSO('As duas senhas não são iguais.'));
+      D.senhaDefinir(senha);
+      return redirecionar(res, '/configuracao.html', { 'Set-Cookie': cookieSessao(D.sessaoCriar()) });
+    }
+    return enviarHtml(res, PAGINA_PRIMEIRO_ACESSO());
+  }
+  if (!temSenha) {
+    if (url.pathname.startsWith('/api/')) return send(401, { error: 'Crie a senha do painel primeiro.', primeiro_acesso: true });
+    return redirecionar(res, '/primeiro-acesso');
+  }
+
+  if (url.pathname === '/login') {
+    if (req.method === 'POST') {
+      const enviada = new URLSearchParams(await lerCorpo(req, 4096)).get('senha') || '';
+      if (!D.senhaConfere(enviada)) return enviarHtml(res, PAGINA_LOGIN(true));
+      const destino = D.contasListar().length ? '/' : '/configuracao.html';
+      return redirecionar(res, destino, { 'Set-Cookie': cookieSessao(D.sessaoCriar()) });
+    }
+    return enviarHtml(res, PAGINA_LOGIN(false));
+  }
+  if (url.pathname === '/sair' && req.method === 'POST') {
+    D.sessaoEncerrar(tokenDoCookie(req));
+    return redirecionar(res, '/login', { 'Set-Cookie': cookieSessao('', 0) });
+  }
+
+  if (!autorizado(req)) {
+    if (url.pathname.startsWith('/api/')) return send(401, { error: 'Sessão expirada. Entre de novo.' });
+    return redirecionar(res, '/login');
+  }
+
+  // Tela do navegador do scraper: JPEG repassado sem passar pelo despacho JSON.
+  if (req.method === 'GET' && url.pathname === '/api/navegador/tela') {
+    let r;
+    try {
+      r = await fetch(SCRAPER() + '/navegador/tela', { signal: AbortSignal.timeout(65000) });
+    } catch { return send(503, { error: scraperFora().message }); }
+    if (!r.ok) {
+      const j = await r.json().catch(() => ({}));
+      return send(r.status, { error: j.detail?.erro || 'sem tela', detail: j.detail || null });
+    }
+    res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'no-store' });
+    return res.end(Buffer.from(await r.arrayBuffer()));
+  }
+
+  // Upload de foto: bytes crus -> multipart para o ML.
+  if (req.method === 'POST' && url.pathname === '/api/pictures') {
+    try {
+      const type = String(req.headers['content-type'] || '');
+      if (!/^image\/(jpeg|png|webp|gif)$/i.test(type)) {
+        throw Object.assign(new Error('Formato não aceito. Use JPG, PNG, WEBP ou GIF.'), { status: 415 });
+      }
+      const chunks = []; let size = 0;
+      for await (const c of req) {
+        size += c.length;
+        if (size > MAX_FOTO_BYTES) throw Object.assign(new Error('Imagem acima de 10 MB.'), { status: 413 });
+        chunks.push(c);
+      }
+      if (!size) throw Object.assign(new Error('Arquivo vazio.'), { status: 400 });
+      const fd = new FormData();
+      fd.append('file', new Blob([Buffer.concat(chunks)], { type }), 'foto.' + type.split('/')[1]);
+      const up = await ml('/pictures/items/upload', { method: 'POST', body: fd });
+      const menor = (up.variations || []).reduce((a, b) => (a && a.size < b.size ? a : b), null);
+      return send(200, { id: up.id, thumb: menor?.secure_url || menor?.url || null });
+    } catch (e) {
+      return send(e.status || 500, { error: e.message, detail: e.body?.cause || null });
+    }
+  }
+
+  // OAuth: cada passagem CONECTA MAIS UMA conta. O retorno volta pelo túnel (/callback).
+  if (url.pathname === '/auth') {
+    const { clientId, clientSecret } = credenciais();
+    if (!clientId || !clientSecret) return redirecionar(res, '/configuracao.html?erro=credenciais');
+    const base = urlPublica();
+    if (!base) return redirecionar(res, '/configuracao.html?erro=tunel');
+    // redirect_uri fora do cadastro dá uma tela genérica de erro lá no ML. Melhor explicar aqui.
+    const sit = await situacaoAtual();
+    if (sit.fonte === 'ml' && !sit.callbackOk) return redirecionar(res, '/configuracao.html?erro=url');
+    const { app } = await appDoML();
+    let verifier = null, desafio = '';
+    if (app?.use_pkce) {
+      verifier = crypto.randomBytes(32).toString('base64url');
+      desafio = `&code_challenge=${crypto.createHash('sha256').update(verifier).digest('base64url')}`
+        + '&code_challenge_method=S256';
+    }
+    const redirect = `${base}/callback`;
+    const state = novoEstadoOAuth({ redirect, verifier, origem: `http://${req.headers.host}` });
+    return redirecionar(res, 'https://auth.mercadolivre.com.br/authorization?response_type=code'
+      + `&client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(redirect)}`
+      + `&state=${state}${desafio}`);
+  }
+
+  // despacho
+  const exato = routes[`${req.method} ${url.pathname}`];
+  const comParam = exato ? null
+    : rotasParam.map((r) => (r.m === req.method ? [r, r.re.exec(url.pathname)] : null))
+        .find((x) => x && x[1]);
+  if (exato || comParam) {
+    try {
+      let body = {};
+      if (req.method === 'POST' || req.method === 'PUT') body = JSON.parse((await lerCorpo(req)) || '{}');
+      return send(200, exato ? await exato(url, body) : await comParam[0].fn(comParam[1].slice(1), body, url));
+    } catch (e) {
+      return send(e.status || 500, { error: e.message, detail: e.body?.cause || e.errors || null });
+    }
+  }
+
+  // estáticos
+  let file;
+  try { file = url.pathname === '/' ? 'index.html' : decodeURIComponent(url.pathname).replace(/^\/+/, ''); }
+  catch { return send(400, { error: 'caminho inválido' }); }
+  const full = path.join(PUBLIC, file);
+  if (!full.startsWith(PUBLIC + path.sep)) return send(403, { error: 'forbidden' });
+  fs.readFile(full, (err, data) => {
+    if (err) return send(404, { error: 'not found' });
+    res.writeHead(200, {
+      'Content-Type': TIPOS[path.extname(full).toLowerCase()] || 'application/octet-stream',
+      'Cache-Control': 'no-cache', ...SEGURANCA,
+    });
+    res.end(data);
+  });
+}
+
+// Sobe os dois servidores. O iniciar.js passa túnel e scraper em `servicos`.
+function iniciar({ porta = PORT, portaPublica = PORTA_PUBLICA, servicos: extra } = {}) {
+  if (extra) servicos = { ...servicos, ...extra };
+  const painel = http.createServer((req, res) => tratarPainel(req, res).catch((e) => falhaInterna(res, e)));
+  const publico = http.createServer((req, res) => tratarPublico(req, res).catch((e) => falhaInterna(res, e)));
+  const ouvir = (srv, p) => new Promise((ok, falhou) => {
+    srv.once('error', falhou);
+    srv.listen(p, '127.0.0.1', () => ok());
+  });
+  return Promise.all([ouvir(painel, porta), ouvir(publico, portaPublica)]).then(() => ({
+    painel, publico, porta: painel.address().port, portaPublica: publico.address().port,
+    fechar: () => Promise.all([painel, publico].map((s) => new Promise((ok) => {
+      s.close(() => ok()); s.closeAllConnections?.();
+    }))),
+  }));
+}
+
+if (require.main === module) {
+  iniciar().then(({ porta, portaPublica }) => {
+    console.log(`→ painel  http://localhost:${porta}   (banco: ${D.DB_FILE})`);
+    console.log(`→ público http://127.0.0.1:${portaPublica}   (só /callback e /webhook: aponte o túnel para cá)`);
+    console.log('  Dica: "npm start" sobe também o túnel e o scraper.');
+  }).catch((e) => { console.error(`Não subiu: ${e.message}`); process.exit(1); });
+}
+module.exports = { buildItem, buildEdicao, iniciar, situacaoAtual, resumoConfig };
