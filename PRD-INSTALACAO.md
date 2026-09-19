@@ -132,14 +132,15 @@ computador onde o painel está instalado.
 
 | Sintoma | O que fazer |
 |---|---|
-| Terminal mostra **"A URL PÚBLICA MUDOU"** | Normal após reiniciar. Aluno copia as URLs novas da tela Configurações para o app no DevCenter, salva e clica **Verificar de novo**. |
+| Terminal mostra **"A URL PÚBLICA MUDOU"** | Acontece depois de `npm run parar`, de reiniciar o computador ou de o túnel cair. Aluno copia as URLs novas da tela Configurações para o app no DevCenter, salva e clica **Verificar de novo**. |
 | Tela do ML: "não foi possível conectar o aplicativo" | Conferir se o app foi **salvo** no DevCenter; conta de colaborador não autoriza; pendência de cadastro no ML bloqueia. |
 | Aparece "Tunnel website ahead!" | O túnel caiu no plano B: digitar o IP que a própria página mostra e continuar. Ver `logs/tunel.log`. |
 | Túnel não abre | Ler `logs/tunel.log`. Rede corporativa pode bloquear a porta 7844: testar outra rede (ex.: celular). |
 | Scraper "reiniciando" sem parar | Ler `logs/scraper.log`; normalmente é o Chromium: `npm run setup`. |
 | "Node … é antigo demais" | Atualizar o Node (Passo 2) e repetir `npm run setup`. |
 
-Para parar tudo: `Ctrl+C` no terminal do `npm start` (ou encerrar o processo em segundo
-plano). Para voltar outro dia: entrar na pasta e rodar `npm start` de novo.
+Para reiniciar depois de mudar código: `Ctrl+C` no `npm start` e rode `npm start` de novo —
+a URL pública continua a mesma. Para fechar tudo, túnel incluído: `npm run parar` (a próxima
+URL será nova). Para voltar outro dia: entrar na pasta e rodar `npm start` de novo.
 
 Mais detalhes: `README.md` do repositório.

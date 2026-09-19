@@ -267,7 +267,7 @@ function pintar(c){
     dica.replaceChildren(
       Object.assign(document.createElement('strong'), { textContent: 'Use o painel de qualquer lugar. ' }),
       document.createTextNode('Abra o endereço público no celular ou em outro computador e entre com a mesma senha. '
-        + 'Ele muda quando o painel é reiniciado. No computador onde o painel está instalado, '
+        + 'Ele se mantém quando você reinicia o painel; só muda depois de npm run parar ou de reiniciar o computador. No computador onde o painel está instalado, '
         + `http://localhost:${c.porta_painel} funciona sempre.`));
   }
   $('uCallback').value = url ? url + '/callback' : 'aguardando o túnel…';

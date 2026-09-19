@@ -34,7 +34,7 @@ npm start
 
 O navegador abre sozinho em `http://localhost:3100`. **Não existe arquivo para editar**: senha, App ID e chave secreta são cadastrados na própria tela.
 
-Para encerrar: `Ctrl+C` no terminal. Painel, scraper e túnel param juntos.
+Mudou o código? `Ctrl+C` e `npm start` de novo: painel e scraper reiniciam, e **a URL pública continua a mesma** (o túnel fica aberto). Para fechar tudo, túnel incluído: `npm run parar`.
 
 ---
 
@@ -97,7 +97,8 @@ O `npm run setup` pode ser rodado quantas vezes quiser: cada passo confere antes
 - **Painel no computador e online.** No computador, `http://localhost:3100`. De qualquer lugar (celular, outro computador), pelo **endereço público** do túnel, com a mesma senha — ele aparece em **Configurações** e no terminal. Pela internet a senha **nunca é criada** (só no computador, para ninguém que ache a URL tomar o painel), o login tem limite de tentativas e o cookie é `Secure`. Quem preferir o painel só local: `PAINEL_ONLINE=0` no `.env` deixa o endereço público apenas com `/callback` (retorno do login) e `/webhook` (notificações).
 - **O scraper sobe junto e volta sozinho.** Se o processo Python cair ou travar, o `npm start` reinicia com espera crescente (2 s, 5 s, 15 s…). O estado aparece em **Configurações**.
 - **Portas ocupadas não travam.** Se a 3100 já estiver em uso por outro programa, o painel usa a próxima livre e avisa. Se o próprio painel já estiver rodando, um segundo `npm start` só abre o navegador nele.
-- **Nada fica para trás.** `Ctrl+C` encerra túnel e scraper. Se o terminal morrer sem encerrar, o próximo `npm start` acha os processos órfãos (conferindo a linha de comando antes) e os encerra.
+- **A URL não muda ao reiniciar.** O túnel roda à parte do `npm start`: `Ctrl+C` encerra painel e scraper e deixa o túnel aberto; o próximo `npm start` o reaproveita, com a mesma URL. `npm run parar` fecha tudo.
+- **Nada fica para trás.** `npm run parar` encerra painel, scraper e túnel. Se o terminal morrer sem encerrar, o próximo `npm start` acha os processos órfãos (conferindo a linha de comando antes) e os encerra.
 
 ---
 
@@ -146,11 +147,13 @@ O OAuth do Mercado Livre exige redirect URI **HTTPS**, e o webhook precisa de UR
 | Navegador no `/callback` | passa direto | cai numa página "Tunnel website ahead!" que pede o IP público (1× por IP a cada 7 dias) |
 | Webhook | passa | passa |
 | `npm audit` | 0 vulnerabilidades | 2 **HIGH** (axios 0.21, pacote parado desde 2023) |
-| Mesma URL ao reiniciar | não | não (nem o subdomínio pedido volta se reconectar logo) |
+| Mesma URL ao reiniciar o painel | **sim** — o túnel é mantido vivo entre reinícios | não (nem o subdomínio pedido volta se reconectar logo) |
 
 Por isso o localtunnel **não** está no `package.json`: só é baixado se o cloudflared não abrir.
 
-**A URL muda a cada reinício — e o painel acompanha.** Cada URL fica gravada no SQLite (`urls_publicas`). Quando o túnel abre com um endereço novo:
+**A URL fica a mesma quando você reinicia o painel.** O `cloudflared` roda desacoplado do `npm start` (estado em `logs/tunel.json`): mudar o código, dar `Ctrl+C` e `npm start` de novo reaproveita o mesmo túnel, e o DevCenter continua certo. Medido: `Ctrl+C` + `npm start` e até terminal morto à força (`kill -9`) mantiveram a URL.
+
+**Quando ela muda — e o painel acompanha.** Um túnel NOVO sempre tem URL nova: depois de `npm run parar`, de reiniciar o computador ou de o túnel cair. Cada URL fica gravada no SQLite (`urls_publicas`). Quando o túnel abre com um endereço novo:
 
 - o terminal mostra um quadro **"A URL PÚBLICA MUDOU"** com as duas URLs novas e a anterior;
 - todas as telas mostram um aviso vermelho no topo, com link para as Configurações;
@@ -207,8 +210,9 @@ A API escuta **só em 127.0.0.1**, de propósito. Um perfil de navegador aceita 
 
 ```
 .
-├── iniciar.js               npm start: sobe painel + scraper + túnel e encerra os três juntos
+├── iniciar.js               npm start: sobe painel + scraper + túnel (reaproveita o túnel aberto: mesma URL)
 ├── instalar.js              npm run setup: dependências, uv, Python, Chromium, .env, testes
+├── parar.js                 npm run parar: fecha painel, scraper e túnel (a próxima URL será nova)
 ├── server.js                painel (localhost) e porta pública (/callback, /webhook)
 ├── db.js                    SQLite: contas (tokens cifrados), senha, sessões, URLs, produtos
 ├── app-ml.js                valida App ID/chave e lê o cadastro do app no DevCenter
@@ -603,7 +607,7 @@ cd scraper && uv run python test_api.py
 
 ### O terminal diz "A URL PÚBLICA MUDOU"
 
-Normal depois de reiniciar: o túnel gratuito troca de endereço. Abra **Configurações**, copie as duas URLs novas para o seu app no DevCenter, salve lá e clique em **Verificar de novo**.
+Acontece depois de `npm run parar`, de reiniciar o computador ou de o túnel cair (um simples `Ctrl+C` + `npm start` mantém a URL). Abra **Configurações**, copie as duas URLs novas para o seu app no DevCenter, salve lá e clique em **Verificar de novo**.
 
 ### "Desculpe, não foi possível conectar o aplicativo à sua conta"
 

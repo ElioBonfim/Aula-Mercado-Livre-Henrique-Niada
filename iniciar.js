@@ -4,7 +4,8 @@
 //   1. painel em http://localhost:3100 e a porta pública (3101)      server.js
 //   2. scraper Python em 127.0.0.1:8100 (reinicia sozinho se cair)   scraper-processo.js
 //   3. túnel HTTPS para a porta pública, com a URL gravada no SQLite  tunel.js
-// Ctrl+C encerra os três. Nada de Docker.
+// Ctrl+C encerra painel e scraper; o túnel fica aberto para a URL não mudar no próximo
+// npm start. `npm run parar` fecha tudo, túnel incluído. Nada de Docker.
 const [maior, menor] = process.versions.node.split('.').map(Number);
 if (maior < 22 || (maior === 22 && menor < 13)) {
   console.error(`\nNode ${process.versions.node} é antigo demais: o painel usa node:sqlite, que precisa do Node 22.13 ou mais novo.`
@@ -18,11 +19,12 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
 const P = require('./processos.js');
-const { Tunel } = require('./tunel.js');
+const { Tunel, lerEstadoTunel, tunelVivo } = require('./tunel.js');
 const { Scraper } = require('./scraper-processo.js');
 
 const LOGS = path.join(__dirname, 'logs');
 const PIDS = path.join(LOGS, 'processos.json');
+const TUNEL_SALVO = path.join(LOGS, 'tunel.json');
 fs.mkdirSync(LOGS, { recursive: true });
 
 const hora = () => new Date().toLocaleTimeString('pt-BR');
@@ -47,11 +49,12 @@ async function instanciaViva() {
   return (await painelJaRodando(pedida)) ? pedida : null;
 }
 
-// Se a execução anterior morreu sem encerrar os filhos, eles seguram a porta e o perfil do
-// Chromium. Só mata o PID se a linha de comando confirmar que é nosso.
+// Se a execução anterior morreu sem encerrar o scraper, ele segura a porta e o perfil do
+// Chromium. Só mata o PID se a linha de comando confirmar que é nosso. O túnel NÃO entra
+// aqui: ele fica vivo de propósito, para a URL não mudar (ver tunel.js).
 function limparOrfaos() {
   const reg = lerPids();
-  const alvos = [['scraper', reg.scraper, /uvicorn.*api:app/], ['túnel', reg.tunel, /cloudflared.*tunnel|localtunnel/]];
+  const alvos = [['scraper', reg.scraper, /uvicorn.*api:app/]];
   for (const [nome, pid, marca] of alvos) {
     if (P.vivo(pid) && marca.test(P.comandoDo(pid))) {
       P.matarArvore(pid);
@@ -68,9 +71,13 @@ async function escolherPortas() {
       if (!usadas.has(p)) { usadas.add(p); return p; }
     }
   };
+  // O túnel salvo aponta para uma porta pública: ela tem de ser a mesma, senão a URL muda.
+  const salvo = lerEstadoTunel(TUNEL_SALVO);
+  const portaTunel = salvo && tunelVivo(salvo) && await P.portaLivre(salvo.porta) ? salvo.porta : null;
+  if (portaTunel) usadas.add(portaTunel);
   const pedida = Number(process.env.PORT) || 3100;
   const porta = await pegar(pedida);
-  const portaPublica = await pegar(Number(process.env.PORTA_PUBLICA) || 3101);
+  const portaPublica = portaTunel || await pegar(Number(process.env.PORTA_PUBLICA) || 3101);
   const portaScraper = await pegar(Number(process.env.SCRAPER_PORTA) || 8100);
   if (porta !== pedida) log(`a porta ${pedida} está ocupada por outro programa; o painel vai usar a ${porta}.`);
   return { porta, portaPublica, portaScraper };
@@ -107,7 +114,7 @@ async function main() {
   });
   const tunel = new Tunel({
     porta: portaPublica, modo: (process.env.TUNEL || 'cloudflared').toLowerCase(),
-    urlFixa: process.env.URL_PUBLICA || '', log, arquivoLog: path.join(LOGS, 'tunel.log'),
+    urlFixa: process.env.URL_PUBLICA || '', log, arquivoLog: path.join(LOGS, 'tunel.log'), arquivoEstado: TUNEL_SALVO,
   });
   process.env.SCRAPER_URL = scraper.url;
 
@@ -176,15 +183,16 @@ async function main() {
   tunel.iniciar();
 
   abrirNavegador(painelUrl);
-  log('tudo subindo. Para encerrar: Ctrl+C');
+  log('tudo subindo. Para reiniciar sem mudar a URL: Ctrl+C e npm start. Para fechar tudo: npm run parar');
 
   // ---- encerramento: nada fica rodando para trás ----
   let encerrando = false;
   const encerrar = () => {
     if (encerrando) return;
     encerrando = true;
-    log('encerrando painel, scraper e túnel…');
-    tunel.parar();
+    log('encerrando painel e scraper…');
+    tunel.parar(); // o túnel fica aberto: no próximo npm start a URL é a mesma
+    if (tunel._persistente) log('o túnel continua aberto, então a URL não muda no próximo npm start. Para fechar tudo: npm run parar');
     scraper.parar();
     try { fs.unlinkSync(PIDS); } catch {}
     srv.fechar().finally(() => process.exit(0));

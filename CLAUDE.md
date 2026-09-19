@@ -6,7 +6,9 @@ Responda em português do Brasil. Instalação do zero: siga `PRD-INSTALACAO.md`
 
 - `npm run setup` — instala tudo (uv, Python, Chromium) e roda os testes. Idempotente.
 - `npm start` — sobe painel (`localhost:3100`), scraper Python (`127.0.0.1:8100`) e túnel
-  HTTPS juntos. Processo longo: rode em segundo plano. `Ctrl+C` encerra os três.
+  HTTPS juntos. Processo longo: rode em segundo plano. `Ctrl+C` encerra painel e scraper e
+  deixa o túnel aberto (a URL não muda no próximo `npm start`). `npm run parar` fecha tudo.
+  Ao reiniciar para aplicar mudança de código, NÃO use `npm run parar`: a URL mudaria.
 - `npm test` — testes do painel. Scraper: `cd scraper && uv run python test_api.py`.
 - Logs: `logs/scraper.log`, `logs/tunel.log`.
 
