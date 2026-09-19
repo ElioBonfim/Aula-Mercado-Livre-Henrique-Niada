@@ -285,16 +285,16 @@
 
     <div class="mCorpo">
       <label for="mTituloCampo">Título <span class="nota" style="display:inline">(máx. 60)</span></label>
-      <input id="mTituloCampo" maxlength="60" required>
+      <input id="mTituloCampo" maxlength="60" required data-contador="60">
 
       <div class="grade" style="margin-top:16px">
         <div>
           <label for="mPreco">Preço (R$)</label>
-          <input id="mPreco" type="number" min="0.01" step="0.01">
+          <input id="mPreco" placeholder="0,00" data-mascara="moeda">
         </div>
         <div>
           <label for="mEstoque">Estoque</label>
-          <input id="mEstoque" type="number" min="0" step="1">
+          <input id="mEstoque" data-mascara="inteiro" data-max="99999">
         </div>
         <div>
           <label for="mCondicao">Condição</label>
@@ -329,11 +329,11 @@
       <div class="grade">
         <div>
           <label for="mSku">SKU interno</label>
-          <input id="mSku" maxlength="60" placeholder="opcional">
+          <input id="mSku" maxlength="60" placeholder="opcional" data-contador="60">
         </div>
         <div>
-          <label for="mVideo">Vídeo (id do YouTube)</label>
-          <input id="mVideo" placeholder="opcional">
+          <label for="mVideo">Vídeo do YouTube <span class="nota" style="display:inline">(cole o link ou o id)</span></label>
+          <input id="mVideo" placeholder="opcional" data-mascara="youtube">
         </div>
         <div>
           <label for="mFrete">Envio</label>
@@ -362,6 +362,7 @@
 </dialog>
 
 
+<script src="/mascaras.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 const msg = $('msg');
@@ -471,8 +472,8 @@ function cartao(it){
 
   const campos = document.createElement('div');
   campos.className = 'campos';
-  const preco = campo('Preço', 'number', it.price, '0.01');
-  const estoque = campo('Estoque', 'number', it.available_quantity, '1');
+  const preco = campo('Preço', 'moeda', it.price);
+  const estoque = campo('Estoque', 'inteiro', it.available_quantity);
   preco.input.disabled = estoque.input.disabled = !precoEditavel;
   if(!precoEditavel){
     const t = encerrado
@@ -497,8 +498,8 @@ function cartao(it){
     const t = tituloInput.value.trim();
     if(tituloEditavel && t && t !== it.title) mudancas.title = t;
     if(precoEditavel){
-      if(Number(preco.input.value) !== it.price) mudancas.price = Number(preco.input.value);
-      if(Number(estoque.input.value) !== it.available_quantity) mudancas.available_quantity = Number(estoque.input.value);
+      if(Mascara.numero(preco.input) !== it.price) mudancas.price = Mascara.numero(preco.input);
+      if(Mascara.numero(estoque.input) !== it.available_quantity) mudancas.available_quantity = Mascara.numero(estoque.input);
     }
     if(!Object.keys(mudancas).length) return aviso('Nada mudou nesse anúncio.', 'err');
     await mandar(it, mudancas, `${it.id} atualizado.`);
@@ -548,11 +549,13 @@ function cartao(it){
   return li;
 }
 
-function campo(rotulo, tipo, valor, passo){
+function campo(rotulo, mascara, valor){
   const wrap = document.createElement('div');
   const l = document.createElement('label'); l.textContent = rotulo;
   const input = document.createElement('input');
-  input.type = tipo; input.value = valor ?? ''; input.step = passo; input.min = tipo==='number' ? '0' : '';
+  input.dataset.mascara = mascara;
+  if(mascara === 'inteiro') input.dataset.max = '99999';
+  Mascara.definir(input, valor);
   l.htmlFor = input.id = 'c' + Math.random().toString(36).slice(2);
   wrap.append(l, input);
   return { wrap, input };
@@ -640,8 +643,8 @@ async function abrirModal(id){
     $('mSub').textContent = `${it.id} · ${({active:'ativo',paused:'pausado',closed:'encerrado',under_review:'em revisão'})[it.status] || it.status}`
       + ` · ${it.sold_quantity ?? 0} vendido(s)`;
     $('mTituloCampo').value = it.title || '';
-    $('mPreco').value = it.price ?? '';
-    $('mEstoque').value = it.available_quantity ?? '';
+    Mascara.definir($('mPreco'), it.price);
+    Mascara.definir($('mEstoque'), it.available_quantity);
     $('mCondicao').value = it.condition || 'not_specified';
     // "refurbished" existe em algumas categorias e é recusado em outras (400).
     // Quem manda é settings.item_conditions da categoria.
@@ -726,7 +729,8 @@ function controleAtributo(a, valorAtual){
     }
   }else{
     campo = document.createElement('input');
-    if(a.value_type === 'number' || a.value_type === 'number_unit') campo.inputMode = 'decimal';
+    if(a.value_type === 'number' || (a.value_type === 'number_unit' && a.unidades.length)) campo.dataset.mascara = 'decimal';
+    else if(a.value_type === 'number_unit') campo.inputMode = 'decimal';
     if(a.values.length){                            // muitas opções: sugere sem travar
       const dl = document.createElement('datalist');
       dl.id = 'dl_' + a.id;
@@ -748,13 +752,14 @@ function controleAtributo(a, valorAtual){
     for(const u of a.unidades){ const o=document.createElement('option'); o.textContent=u; un.appendChild(o); }
     // "16 GB" -> valor 16, unidade GB
     const m = /^([\d.,]+)\s*(\S+)?$/.exec(String(valorAtual || '').trim());
-    campo.value = m ? m[1] : '';
+    Mascara.definir(campo, m ? Number(m[1].replace(',', '.')) : '');   // o ML manda ponto decimal
     if(m && m[2] && a.unidades.includes(m[2])) un.value = m[2];
     else if(a.unidade_padrao) un.value = a.unidade_padrao;
     linha.append(campo, un);
     wrap.appendChild(linha);
   }else{
-    campo.value = valorAtual || '';
+    if(campo.dataset.mascara === 'decimal') Mascara.definir(campo, valorAtual ? Number(String(valorAtual).replace(',', '.')) : '');
+    else campo.value = valorAtual || '';
     wrap.appendChild(campo);
   }
 
@@ -769,7 +774,8 @@ function controleAtributo(a, valorAtual){
 function lerAtributos(raiz){
   const out = {};
   raiz.querySelectorAll('[data-attr]').forEach(el => {
-    const v = el.value.trim();
+    let v = el.value.trim();
+    if(v && el.dataset.mascara === 'decimal') v = String(Mascara.numero(el));   // "1,5" -> "1.5" para o ML
     if(!v) return;
     const un = raiz.querySelector(`[data-unidade-de="${el.dataset.attr}"]`);
     out[el.dataset.attr] = un ? `${v} ${un.value}` : v;
@@ -911,8 +917,8 @@ $('formEdit').onsubmit = async (ev) => {
   const t = $('mTituloCampo').value.trim();
   if(tituloEditavel && t !== it.title) mud.title = t;
   if(precoEditavel){
-    if(Number($('mPreco').value) !== it.price) mud.price = Number($('mPreco').value);
-    if(Number($('mEstoque').value) !== it.available_quantity) mud.available_quantity = Number($('mEstoque').value);
+    if(Mascara.numero($('mPreco')) !== it.price) mud.price = Mascara.numero($('mPreco'));
+    if(Mascara.numero($('mEstoque')) !== it.available_quantity) mud.available_quantity = Mascara.numero($('mEstoque'));
   }
   if($('mCondicao').value !== it.condition) mud.condition = $('mCondicao').value;
   if($('mSku').value.trim() !== (it.seller_custom_field || '')) mud.seller_custom_field = $('mSku').value.trim();

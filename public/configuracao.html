@@ -151,10 +151,10 @@
     <p class="sub">Ficam só neste computador; a chave vai cifrada no banco. Antes de salvar, o painel confere com o Mercado Livre.</p>
     <form id="formCred" novalidate>
       <label for="appId">App ID</label>
-      <input id="appId" name="app_id" inputmode="numeric" autocomplete="off" spellcheck="false" placeholder="ex.: 1234567890123456" required>
+      <input id="appId" name="app_id" autocomplete="off" spellcheck="false" placeholder="ex.: 1234567890123456" required data-mascara="digitos" maxlength="25">
       <label for="secret">Chave secreta</label>
       <div class="linha">
-        <input id="secret" name="secret" type="password" autocomplete="off" spellcheck="false" required>
+        <input id="secret" name="secret" type="password" autocomplete="off" spellcheck="false" required data-mascara="sem-espacos" maxlength="128">
         <button type="button" class="ghost" id="btnVerSecret" aria-pressed="false" aria-controls="secret">Mostrar</button>
       </div>
       <div class="acoes"><button type="submit" id="btnSalvarCred">Salvar e validar</button></div>
@@ -207,6 +207,7 @@
   </section>
 </main>
 
+<script src="/mascaras.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 

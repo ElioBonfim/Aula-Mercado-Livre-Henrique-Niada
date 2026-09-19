@@ -99,26 +99,26 @@
   <fieldset>
     <legend>Produto</legend>
 
-    <label for="title">Título <span class="hint">(máx. 60 caracteres)</span></label>
+    <label for="title">Título <span class="hint">— caracteres usados:</span></label>
     <div class="inline">
-      <input id="title" name="title" maxlength="60" required
+      <input id="title" name="title" maxlength="60" required data-contador="60"
              placeholder="Camiseta Masculina Algodão Gola V Preta">
       <button type="button" class="ghost" id="btnPrever">Sugerir categoria</button>
     </div>
     <ul id="sugestoes"></ul>
 
     <label for="category_id">Categoria</label>
-    <input id="category_id" name="category_id" required placeholder="MLB31447" pattern="[A-Z]{3}[0-9]+">
+    <input id="category_id" name="category_id" required placeholder="MLB31447" data-mascara="categoria" spellcheck="false" autocapitalize="characters">
     <div id="catInfo"></div>
 
     <div class="row">
       <div>
         <label for="price">Preço (R$)</label>
-        <input id="price" name="price" type="number" min="0.01" step="0.01" required placeholder="89.90">
+        <input id="price" name="price" required placeholder="0,00" data-mascara="moeda">
       </div>
       <div>
         <label for="quantity">Estoque</label>
-        <input id="quantity" name="quantity" type="number" min="1" step="1" value="1" required>
+        <input id="quantity" name="quantity" value="1" required data-mascara="inteiro" data-max="99999">
       </div>
       <div>
         <label for="condition">Condição</label>
@@ -161,7 +161,7 @@
       <p class="hint">A tabela fica salva na sua conta e serve para os próximos anúncios desta marca e gênero.
         As medidas aparecem para o comprador: use as <strong>medidas reais</strong>.</p>
       <label for="gradeNome">Nome da tabela</label>
-      <input id="gradeNome" maxlength="60" autocomplete="off" aria-describedby="gradeNomeDica">
+      <input id="gradeNome" maxlength="60" autocomplete="off" aria-describedby="gradeNomeDica" data-mascara="nome-tabela" data-contador="60">
       <p class="hint" id="gradeNomeDica" style="margin:4px 0 0">Só letras, números e espaços.</p>
       <div class="gradeRolagem">
         <table class="gradeTab">
@@ -211,6 +211,7 @@
 </form>
 </main>
 
+<script src="/mascaras.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 const msg = $('msg');
@@ -400,10 +401,22 @@ async function carregarCategoria(){
           a.values.map(v => `<option>${v.replace(/</g,'&lt;')}</option>`).join('');
       }else{
         campo = document.createElement('input');
-        campo.placeholder = a.value_type === 'number_unit' ? 'ex.: 500 g' : '';
+        const numerico = a.value_type === 'number' || (a.value_type === 'number_unit' && a.unidades?.length);
+        if(numerico){ campo.dataset.mascara = 'decimal'; campo.placeholder = 'ex.: 500'; }
+        else if(a.value_type === 'number_unit') campo.placeholder = 'ex.: 500 g';
       }
       campo.id = 'attr_' + a.id; campo.dataset.attr = a.id; campo.required = true;
-      wrap.append(lab, campo); $('attrs').appendChild(wrap);
+      wrap.appendChild(lab);
+      // "500 g" num campo só é pedir erro: número de um lado, unidade (do ML) do outro.
+      if(a.value_type === 'number_unit' && a.unidades?.length && campo.tagName === 'INPUT'){
+        const linha = document.createElement('div'); linha.style.cssText = 'display:flex;gap:6px';
+        const un = document.createElement('select'); un.style.cssText = 'width:auto;flex:0 0 auto';
+        un.dataset.unidadeDe = a.id; un.setAttribute('aria-label', 'Unidade de ' + a.name);
+        a.unidades.forEach(u => un.add(new Option(u, u)));
+        if(a.unidade_padrao) un.value = a.unidade_padrao;
+        linha.append(campo, un); wrap.appendChild(linha);
+      }else wrap.appendChild(campo);
+      $('attrs').appendChild(wrap);
     });
     iniciarGrade(!!c.grade);
   }catch(e){ $('catInfo').textContent = 'categoria não encontrada'; categoriaCarregada = ''; }
@@ -422,7 +435,7 @@ function iniciarGrade(ativa){
   $('gradeCriar').hidden = true;
   limparSelect($('gradeTabela')); limparSelect($('gradeLinha'));
   if(!ativa) return;
-  for(const id of ['attr_GENDER', 'attr_BRAND']) $(id)?.addEventListener('change', carregarTabelas);
+  for(const id of ['attr_GENDER', 'attr_BRAND']) $(id)?.addEventListener('change', () => carregarTabelas());
   carregarTabelas();
 }
 
@@ -430,7 +443,9 @@ function limparSelect(sel, texto = '—'){
   sel.replaceChildren(new Option(texto, '')); sel.disabled = true;
 }
 
-async function carregarTabelas(selecionar){
+// nova: a tabela recém-criada. A busca do ML leva alguns segundos para enxergá-la (medido):
+// sem isto a tela dizia "nenhuma tabela ainda" e o segundo clique esbarrava no nome já usado.
+async function carregarTabelas(selecionar, nova){
   const genero = $('attr_GENDER')?.value || '', marca = $('attr_BRAND')?.value || '';
   const dica = $('gradeDica');
   limparSelect($('gradeTabela')); limparSelect($('gradeLinha'));
@@ -439,6 +454,7 @@ async function carregarTabelas(selecionar){
   try{
     const q = new URLSearchParams({ categoria: $('category_id').value.trim().toUpperCase(), genero, marca });
     const r = await api('/api/tabelas?' + q);
+    if(nova && !r.tabelas.some(t => t.id === nova.id)) r.tabelas.unshift(nova);
     gradeFicha = r.ficha;
     const sel = $('gradeTabela');
     sel.replaceChildren(new Option(r.tabelas.length ? '— selecione —' : 'nenhuma tabela ainda', ''));
@@ -487,7 +503,7 @@ function novaLinhaGrade(tamanho = ''){
   const n = $('gradeLinhas').children.length + 1;
   const td = (el) => { const c = document.createElement('td'); c.appendChild(el); tr.appendChild(c); return el; };
   const tam = td(document.createElement('input'));
-  tam.value = tamanho; tam.dataset.tamanho = '1'; tam.setAttribute('aria-label', `${f.principal.nome}, linha ${n}`);
+  tam.value = tamanho; tam.dataset.tamanho = '1'; tam.dataset.mascara = 'maiusculas'; tam.maxLength = 10; tam.setAttribute('aria-label', `${f.principal.nome}, linha ${n}`);
   const listas = f.listas.map(li => {
     const s = td(document.createElement('select'));
     s.dataset.lista = li.id; s.setAttribute('aria-label', `${li.nome}, linha ${n}`);
@@ -504,7 +520,7 @@ function novaLinhaGrade(tamanho = ''){
   tam.addEventListener('input', sugerir); sugerir();
   f.medidas.forEach(m => {
     const i = td(document.createElement('input'));
-    i.inputMode = 'decimal'; i.dataset.medida = m.id; i.placeholder = 'ex.: 96';
+    i.dataset.mascara = 'decimal'; i.dataset.casas = '1'; i.dataset.medida = m.id; i.placeholder = 'ex.: 96';
     i.setAttribute('aria-label', `${m.nome} em ${m.unidade}, linha ${n}`);
   });
   const x = td(document.createElement('button'));
@@ -529,7 +545,7 @@ $('gradeCriarBtn').onclick = async () => {
     }) });
     msgC.textContent = `Tabela "${t.nome}" criada. Agora escolha o tamanho deste anúncio.`;
     $('gradeCriar').open = false;
-    await carregarTabelas(t.id);
+    await carregarTabelas(t.id, t);
   }catch(e){ msgC.textContent = 'Não criou: ' + e.message; }
   finally{ b.disabled = false; }
 };
@@ -543,8 +559,18 @@ $('form').onsubmit = async (ev) => {
   dados.free_shipping = f.has('free_shipping');
   dados.local_pick_up = f.has('local_pick_up');
   dados.picture_ids = fotos.map(x => x.id);
+  // Máscaras: "1.234,56" -> 1234.56. Nunca Number(campo.value).
+  dados.price = Mascara.numero($('price'));
+  dados.quantity = Mascara.numero($('quantity'));
+  if(!(dados.price > 0)){ btn.disabled = false; return aviso('Informe o preço.', 'err'); }
+  if(!(dados.quantity >= 1)){ btn.disabled = false; return aviso('Informe o estoque (ao menos 1).', 'err'); }
   dados.attributes = {};
-  document.querySelectorAll('[data-attr]').forEach(el => dados.attributes[el.dataset.attr] = el.value);
+  document.querySelectorAll('#attrs [data-attr]').forEach(el => {
+    let v = el.value.trim();
+    if(v && el.dataset.mascara === 'decimal') v = String(Mascara.numero(el));   // ML quer ponto decimal
+    const un = document.querySelector(`[data-unidade-de="${el.dataset.attr}"]`);
+    dados.attributes[el.dataset.attr] = v && un ? `${v} ${un.value}` : v;
+  });
 
   const faltando = attrsAtuais.filter(a => !dados.attributes[a.id]).map(a => a.name);
   if(faltando.length){ btn.disabled = false; return aviso('Preencha a ficha técnica: ' + faltando.join(', '), 'err'); }

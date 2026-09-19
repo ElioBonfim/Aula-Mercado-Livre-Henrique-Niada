@@ -200,6 +200,10 @@ async function renovar(conta) {
 // as vezes em "error", as vezes so dentro de cause[]. E um dos dois costuma ser
 // um codigo (BODY_INVALID_FIELDS) que nao ajuda ninguem. Pegamos a mais descritiva.
 function mensagemDoML(json, fallback) {
+  // Tabela de medidas (e outras APIs de catálogo) põem o motivo em errors[], não em cause[]:
+  // sem isto o aluno via só "Chart validation errors found".
+  const detalhes = (Array.isArray(json?.errors) ? json.errors : []).map((e) => e?.message).filter(Boolean);
+  if (detalhes.length) return detalhes.join(' · ');
   const candidatos = [json?.error, json?.message,
     ...(Array.isArray(json?.cause) ? json.cause.map((c) => c?.message) : [])]
     .filter((t) => typeof t === 'string' && t.trim());
@@ -942,6 +946,7 @@ const routes = {
       });
       return { attributes: [{ id: ficha.principal.id, values: [{ name: tam }] }, ...medidas, ...listas] };
     });
+    // Motivos de recusa da tabela em português (os mais comuns na aula).
     const ch = await ml('/catalog/charts', { method: 'POST', body: JSON.stringify({
       names: { [ctx.site]: nome }, domain_id: ctx.domainId, site_id: ctx.site,
       main_attribute: { attributes: [{ site_id: ctx.site, id: ficha.principal.id }] },
@@ -950,7 +955,14 @@ const routes = {
         { id: 'BRAND', values: [ctx.marca.id ? { id: ctx.marca.id, name: ctx.marca.name } : { name: ctx.marca.name }] },
       ],
       rows,
-    }) });
+    }) }).catch((e) => {
+      const codigos = (e.body?.errors || []).map((x) => x.code);
+      if (codigos.includes('chart_name_unavailable')) {
+        throw erro400(`Já existe uma tabela chamada "${nome}" para esta marca e gênero. Ela aparece na lista "Tabela" acima: `
+          + 'escolha-a, ou dê outro nome para criar uma nova.');
+      }
+      throw e;
+    });
     return tabelaSimples(ch, ctx.site);
   },
 
