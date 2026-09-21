@@ -13,7 +13,7 @@ Responda em português do Brasil. Instalação do zero: siga `PRD-INSTALACAO.md`
 - `npm run mcp` — servidor MCP por stdio (só para depurar; o Claude Code sobe sozinho pelo
   `.mcp.json` de quem abre esta pasta). Confira com `/mcp`.
 - `npm test` — testes do painel. Scraper: `cd scraper && uv run python test_api.py`.
-- Logs: `logs/scraper.log`, `logs/tunel.log`.
+- Logs: `logs/scraper.log`, `logs/cloudflared.log`.
 
 ## Arquitetura (leia antes de mexer)
 

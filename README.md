@@ -712,11 +712,11 @@ O retorno não corresponde a um "Conectar conta" dos últimos 15 minutos — ou 
 
 ### Aparece "Tunnel website ahead!"
 
-O cloudflared não abriu e o painel caiu no plano B (localtunnel). Digite o IP que a própria página mostra e continue: ela aparece uma vez por IP a cada 7 dias. Veja o motivo da falha do cloudflared em `logs/tunel.log`.
+O cloudflared não abriu e o painel caiu no plano B (localtunnel). Digite o IP que a própria página mostra e continue: ela aparece uma vez por IP a cada 7 dias. Veja o motivo da falha do cloudflared em `logs/cloudflared.log`.
 
 ### O túnel não abre
 
-`logs/tunel.log` mostra o erro. Redes corporativas às vezes bloqueiam a porta 7844 (que o cloudflared usa); tente outra rede, ou use o celular como roteador. O painel continua funcionando localmente; só o login de conta nova e as notificações dependem do túnel.
+`logs/cloudflared.log` mostra o erro. Redes corporativas às vezes bloqueiam a porta 7844 (que o cloudflared usa); tente outra rede, ou use o celular como roteador. O painel continua funcionando localmente; só o login de conta nova e as notificações dependem do túnel.
 
 ### Scraper "reiniciando" sem parar
 
