@@ -1,0 +1,520 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Configurações — Mercado Livre</title>
+<style>
+  :root{
+    --bg:#f2f3f5; --card:#fff; --ink:#1a1a1a; --muted:#5f6368; --line:#e0e2e6;
+    --brand:#2968c8; --link:#1a5fc4; --ok:#0b6b3a; --ok-bg:#e6f4ea; --ok-line:#a6dcb6;
+    --warn:#7a4a00; --warn-bg:#fff4e0; --warn-line:#f0c46b;
+    --err:#8c1d18; --err-bg:#fce8e6; --err-line:#f0b3ad; --radius:8px;
+  }
+  *{box-sizing:border-box}
+  [hidden]{display:none !important}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  main{max-width:780px;margin:0 auto;padding:24px 16px 72px}
+  section{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:20px 22px 22px;margin:0 0 20px}
+  h2{font-size:19px;line-height:1.3;margin:0 0 6px}
+  h2 .num{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;
+    background:var(--brand);color:#fff;font-size:13px;margin-right:8px;vertical-align:1px}
+  h2 .num.feito{background:var(--ok)}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 14px}
+  label{display:block;margin:14px 0 4px;font-size:13px;font-weight:600}
+  input{width:100%;padding:10px 12px;border:1px solid #c4c7cc;border-radius:var(--radius);
+    font:inherit;background:#fff;color:inherit}
+  input[readonly]{background:#f7f8fa;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px}
+  input:focus,button:focus-visible,a:focus-visible,summary:focus-visible{outline:2px solid var(--brand);outline-offset:1px}
+  button,.botao{background:var(--brand);color:#fff;border:0;border-radius:var(--radius);
+    padding:10px 16px;font:inherit;font-weight:600;cursor:pointer;text-decoration:none;display:inline-block}
+  button:hover,.botao:hover{filter:brightness(.94)}
+  button.ghost{background:#eef3fd;color:#1a5fc4}
+  button[disabled],.botao[aria-disabled="true"]{opacity:.5;cursor:not-allowed;pointer-events:none}
+  .linha{display:flex;gap:8px;align-items:stretch}
+  .linha input{flex:1;min-width:0}
+  .acoes{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:16px}
+  .passos{display:flex;gap:6px;list-style:none;padding:0;margin:0 0 20px;font-size:13px;color:var(--muted)}
+  .passos li{flex:1;border-top:3px solid var(--line);padding-top:6px}
+  .passos li.feito{border-color:var(--ok);color:var(--ok)}
+  .passos li[aria-current]{border-color:var(--brand);color:var(--ink);font-weight:600}
+  .caixa{border-radius:var(--radius);padding:12px 14px;font-size:15px;margin:14px 0 0;border:1px solid}
+  .caixa.ok{background:var(--ok-bg);border-color:var(--ok-line);color:var(--ok)}
+  .caixa.warn{background:var(--warn-bg);border-color:var(--warn-line);color:var(--warn)}
+  .caixa.err{background:var(--err-bg);border-color:var(--err-line);color:var(--err)}
+  .caixa p{margin:4px 0 0}
+  .caixa code,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;word-break:break-all}
+  .status{display:grid;grid-template-columns:max-content 1fr;gap:6px 14px;margin:0}
+  .status dt{color:var(--muted)}
+  .status dd{margin:0;word-break:break-word}
+  .pilula{display:inline-block;font-size:12px;font-weight:600;padding:2px 8px;border-radius:999px;border:1px solid}
+  .pilula.ok{background:var(--ok-bg);color:var(--ok);border-color:var(--ok-line)}
+  .pilula.warn{background:var(--warn-bg);color:var(--warn);border-color:var(--warn-line)}
+  .pilula.err{background:var(--err-bg);color:var(--err);border-color:var(--err-line)}
+  details{margin-top:14px}
+  summary{cursor:pointer;color:var(--link);font-weight:600}
+  ol.guia{padding-left:20px;margin:10px 0 0}
+  ol.guia li{margin:6px 0}
+  ul.lista{list-style:none;padding:0;margin:10px 0 0}
+  ul.lista li{padding:8px 0;border-top:1px solid var(--line)}
+  ul.lista li:first-child{border-top:0}
+  a{color:var(--link)}
+  #aviso:empty{display:none}
+  #aviso .caixa:last-child{margin-bottom:20px}
+  .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+  @media (max-width:560px){
+    .linha{flex-wrap:wrap} .linha input{flex:1 1 100%}
+    .passos{flex-direction:column} .status{grid-template-columns:1fr} .status dt{margin-top:6px}
+  }
+</style>
+<link rel="stylesheet" href="/layout.css">
+</head>
+<body>
+<div class="app">
+  <aside class="lateral">
+    <div class="marca"><b>ML</b><span>Gestor ML</span></div>
+    <nav aria-label="Telas do painel">
+      <a href="/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10.5 12 4l8 6.5"/><path d="M6.5 10v9h11v-9"/></svg>Início</a>
+      <a href="/publicar.html"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="4.5"/><path d="M12 9v6M9 12h6"/></svg>Publicar</a>
+      <a href="/anuncios.html"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10"/></svg>Meus anúncios</a>
+      <a href="/navegador.html"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M4 12h16M12 4c2.4 2.6 2.4 12.8 0 16M12 4c-2.4 2.6-2.4 12.8 0 16"/></svg>Navegador</a>
+      <a href="/configuracao.html" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 8h14M5 16h14"/><circle cx="10" cy="8" r="2.3"/><circle cx="15" cy="16" r="2.3"/></svg>Configurações</a>
+    </nav>
+    <p class="lateral-pe">Painel da aula, rodando no seu computador.</p>
+  </aside>
+  <div class="conteudo">
+<header>
+  <h1>Configurações — Mercado Livre</h1>
+  <form method="POST" action="/sair"><button type="submit">Sair</button></form>
+</header>
+
+
+<main>
+  <ol class="passos" id="passos" aria-label="Etapas da configuração">
+    <li class="feito">1. Criar senha</li>
+    <li id="passo2">2. Criar app no ML</li>
+    <li id="passo3">3. Conectar conta</li>
+  </ol>
+
+  <div id="aviso" role="status" aria-live="polite"></div>
+
+  <!-- 1. Túnel e URLs para o DevCenter -->
+  <section aria-labelledby="t1">
+    <h2 id="t1"><span class="num" id="n1">1</span>Túnel e URLs para o aplicativo do Mercado Livre</h2>
+    <p class="sub">O Mercado Livre só devolve o login e as notificações para um endereço HTTPS público. O painel abre esse endereço sozinho (um túnel) e ele aponta para este computador.</p>
+
+    <dl class="status">
+      <dt>Túnel</dt><dd id="tunelEstado">—</dd>
+      <dt>Endereço público</dt><dd id="tunelUrl" class="mono">—</dd>
+    </dl>
+    <p class="caixa ok" id="dicaOnline" hidden></p>
+
+    <p class="sub" style="margin:18px 0 0">Cadastre estas duas URLs no seu aplicativo do DevCenter:</p>
+    <label for="uCallback">URI de redirect</label>
+    <div class="linha">
+      <input id="uCallback" readonly value="aguardando o túnel…">
+      <button type="button" class="ghost" data-copiar="uCallback">Copiar</button>
+    </div>
+    <label for="uWebhook">URL de retornos de chamada de notificação</label>
+    <div class="linha">
+      <input id="uWebhook" readonly value="aguardando o túnel…">
+      <button type="button" class="ghost" data-copiar="uWebhook">Copiar</button>
+    </div>
+
+    <div id="situacao"></div>
+
+    <div class="acoes">
+      <button type="button" class="ghost" id="btnVerificar">Verificar de novo no Mercado Livre</button>
+      <button type="button" class="ghost" id="btnConfirmar" hidden>Já atualizei no Mercado Livre</button>
+      <a href="https://developers.mercadolivre.com.br/devcenter" target="_blank" rel="noopener noreferrer">Abrir o DevCenter<span class="sr"> (abre em nova aba)</span> ↗</a>
+    </div>
+
+    <details id="guia">
+      <summary>Passo a passo: criar o aplicativo no DevCenter</summary>
+      <ol class="guia">
+        <li>Entre em <a href="https://developers.mercadolivre.com.br/devcenter" target="_blank" rel="noopener noreferrer">developers.mercadolivre.com.br/devcenter</a> com a sua conta e clique em <strong>Criar aplicação</strong>.</li>
+        <li>Em <strong>URIs de redirect</strong>, cole a URI de redirect acima — exatamente como está, sem barra no final.</li>
+        <li>Em <strong>URL de retornos de chamada de notificação</strong>, cole a URL de notificação acima.</li>
+        <li>Em <strong>Fluxos OAuth</strong>, marque <strong>Authorization Code</strong>, <strong>Client Credentials</strong> e <strong>Refresh Token</strong>.</li>
+        <li>Em <strong>Permissões</strong>, dê leitura e escrita pelo menos em <em>Publicação e sincronização</em>.</li>
+        <li>Aceite os termos, resolva o reCAPTCHA e <strong>salve</strong>. Sem salvar, nada é gravado.</li>
+        <li>Copie o <strong>App ID</strong> e a <strong>Chave secreta</strong> para o passo 2 abaixo.</li>
+      </ol>
+      <p class="sub" style="margin-top:10px">A URL do túnel muda sempre que o painel é reiniciado. Quando mudar, este painel avisa no topo de todas as telas; é só voltar ao DevCenter e trocar as duas URLs.</p>
+    </details>
+
+    <dl class="status" style="margin-top:16px">
+      <dt>URLs anteriores</dt><dd id="historico">—</dd>
+    </dl>
+  </section>
+
+  <!-- 2. App ID e chave -->
+  <section aria-labelledby="t2">
+    <h2 id="t2"><span class="num" id="n2">2</span>App ID e chave secreta</h2>
+    <p class="sub">Ficam só neste computador; a chave vai cifrada no banco. Antes de salvar, o painel confere com o Mercado Livre.</p>
+    <form id="formCred" novalidate>
+      <label for="appId">App ID</label>
+      <input id="appId" name="app_id" autocomplete="off" spellcheck="false" placeholder="ex.: 1234567890123456" required data-mascara="digitos" maxlength="25">
+      <label for="secret">Chave secreta</label>
+      <div class="linha">
+        <input id="secret" name="secret" type="password" autocomplete="off" spellcheck="false" required data-mascara="sem-espacos" maxlength="128">
+        <button type="button" class="ghost" id="btnVerSecret" aria-pressed="false" aria-controls="secret">Mostrar</button>
+      </div>
+      <div class="acoes"><button type="submit" id="btnSalvarCred">Salvar e validar</button></div>
+    </form>
+    <div id="credStatus"></div>
+  </section>
+
+  <!-- 3. Conectar conta -->
+  <section aria-labelledby="t3">
+    <h2 id="t3"><span class="num" id="n3">3</span>Conectar a sua conta do Mercado Livre</h2>
+    <p class="sub">Abre a tela de autorização do Mercado Livre no seu navegador. Ao aceitar, você volta para cá com a conta conectada.</p>
+    <ul class="lista" id="contas"></ul>
+    <div class="acoes">
+      <a class="botao" id="btnConectar" href="/auth" aria-disabled="true">Conectar conta</a>
+      <span class="sub" id="conectarDica" style="margin:0"></span>
+    </div>
+  </section>
+
+  <!-- Scraper -->
+  <section aria-labelledby="t4">
+    <h2 id="t4">Scraper (navegador com a sua conta logada)</h2>
+    <p class="sub">Sobe junto com o painel e volta sozinho se cair. Ele lê a posição dos anúncios nas buscas — dado que a API oficial não entrega.</p>
+    <dl class="status">
+      <dt>Estado</dt><dd id="scrEstado">—</dd>
+      <dt>Endereço</dt><dd id="scrUrl" class="mono">—</dd>
+      <dt>Sessão no ML</dt><dd id="scrSessao">não testada</dd>
+    </dl>
+    <div class="acoes">
+      <button type="button" class="ghost" id="btnTestarSessao">Testar sessão</button>
+      <a class="botao" href="/navegador.html">Fazer login no scraper</a>
+      <button type="button" class="ghost" id="btnReiniciar">Reiniciar scraper</button>
+    </div>
+  </section>
+
+  <!-- Claude Code (MCP) -->
+  <section aria-labelledby="t6">
+    <h2 id="t6">Claude Code (perguntar em vez de procurar)</h2>
+    <p class="sub">O projeto já vem com uma ponte para o Claude Code. Com ela você pergunta por escrito e ele responde com os seus dados — os mesmos deste painel: anúncios, melhores produtos, curva ABC, visitas, vendas, lucro. Não precisa instalar nada nem entrar de novo: ele usa a conta que você conectou aqui.</p>
+
+    <dl class="status">
+      <dt>Estado</dt><dd id="mcpEstado">—</dd>
+      <dt>Pasta do projeto</dt><dd id="mcpPasta" class="mono">—</dd>
+    </dl>
+
+    <label for="mcpComando">Cole isto no Terminal, neste computador</label>
+    <div class="linha">
+      <input id="mcpComando" readonly value="—">
+      <button type="button" class="ghost" data-copiar="mcpComando">Copiar</button>
+    </div>
+    <p class="sub">A linha entra na pasta do projeto e abre o Claude Code ali. É por estar nesta pasta que ele enxerga os seus anúncios.</p>
+
+    <details>
+      <summary>Passo a passo: ligar o Claude Code aos seus dados</summary>
+      <ol class="guia">
+        <li>Conecte a sua conta do Mercado Livre no <strong>passo 3</strong> acima. Sem conta conectada não há o que consultar.</li>
+        <li>Abra o <strong>Terminal</strong> e cole a linha acima.</li>
+        <li>Na primeira vez ele pergunta se pode usar o servidor <strong>mercado-livre</strong> deste projeto. Responda que <strong>sim</strong>.</li>
+        <li>Para conferir, digite <code>/mcp</code>: <code>mercado-livre</code> tem de aparecer como <em>connected</em>.</li>
+        <li>Pronto — é só perguntar em português.</li>
+      </ol>
+      <p class="sub" style="margin-top:10px"><strong>Exemplos:</strong> “quais foram meus 10 melhores produtos nos últimos 30 dias?” · “quem está na curva A?” · “o MLB123… está perdendo visitas?” · “grave custo de R$ 42,30 no MLB123… e me diga a margem” · “o que o Mercado Livre sugere melhorar nos meus anúncios?”</p>
+      <p class="sub">A conversa acontece só neste computador: o endereço público do túnel não publica nada disso. Para deixar a ponte apenas consultando, sem poder publicar nem editar, escreva <code>ML_MCP_ESCRITA=0</code> no arquivo <code>.env</code> e reinicie.</p>
+    </details>
+  </section>
+
+  <!-- Senha -->
+  <section aria-labelledby="t5">
+    <h2 id="t5">Senha do painel</h2>
+    <details>
+      <summary>Trocar a senha</summary>
+      <form id="formSenha" novalidate>
+        <label for="senhaAtual">Senha atual</label>
+        <input id="senhaAtual" type="password" autocomplete="current-password" required>
+        <label for="senhaNova">Senha nova</label>
+        <input id="senhaNova" type="password" minlength="8" autocomplete="new-password" required aria-describedby="senhaDica">
+        <p class="sub" id="senhaDica" style="margin:4px 0 0">Mínimo de 8 caracteres. Trocar a senha encerra as sessões abertas.</p>
+        <div class="acoes"><button type="submit">Trocar senha</button></div>
+      </form>
+      <div id="senhaStatus"></div>
+    </details>
+  </section>
+</main>
+  </div>
+</div>
+
+<script src="/mascaras.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+
+async function api(path, opts){
+  const r = await fetch(path, opts);
+  const j = await r.json().catch(() => ({}));
+  if(r.status === 401 && !path.includes('/senha')){ location.href = '/login'; throw new Error('sessão expirada'); }
+  if(!r.ok) throw new Error(j.error || `erro ${r.status}`);
+  return j;
+}
+const post = (path, body) => api(path, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body || {}) });
+
+// Caixa de mensagem montada só com textContent: tudo que vem do servidor ou do ML é dado.
+function caixa(tipo, titulo, linhas = []){
+  const d = document.createElement('div');
+  d.className = 'caixa ' + tipo;
+  const s = document.createElement('strong'); s.textContent = titulo; d.appendChild(s);
+  for(const l of linhas){
+    const p = document.createElement('p');
+    for(const parte of [].concat(l)){
+      if(parte && typeof parte === 'object'){ const c = document.createElement('code'); c.textContent = parte.code; p.appendChild(c); }
+      else p.appendChild(document.createTextNode(parte));
+    }
+    d.appendChild(p);
+  }
+  return d;
+}
+const pilula = (tipo, texto) => { const s = document.createElement('span'); s.className = 'pilula ' + tipo; s.textContent = texto; return s; };
+const dataHora = (v) => v ? new Date(v).toLocaleString('pt-BR', { dateStyle:'short', timeStyle:'short' }) : '';
+
+// ---------- mensagens que chegam pela URL ----------
+const qs = new URLSearchParams(location.search);
+const MSG = {
+  credenciais: ['warn', 'Antes de conectar a conta, salve o App ID e a chave secreta (passo 2).'],
+  tunel: ['err', 'O túnel HTTPS está fora do ar, então o Mercado Livre não tem para onde devolver o login. Aguarde ele voltar (esta tela atualiza sozinha).'],
+  url: ['err', 'O seu aplicativo no Mercado Livre não tem a URI de redirect atual. Atualize no DevCenter (passo 1) e tente de novo.'],
+};
+if(qs.get('conectado')) $('aviso').replaceChildren(caixa('ok', 'Conta conectada. Pode publicar e editar anúncios.'));
+else if(MSG[qs.get('erro')]) $('aviso').replaceChildren(caixa(...MSG[qs.get('erro')]));
+if(qs.toString()) history.replaceState(null, '', location.pathname);
+
+// ---------- desenho ----------
+let ultimo = null;
+function pintar(c){
+  ultimo = c;
+  const t = c.tunel || {};
+  const url = t.estado === 'online' ? t.url : null;
+  // O endereço público é também o jeito de abrir o painel de qualquer lugar.
+  const destUrl = $('tunelUrl'); destUrl.replaceChildren();
+  if(url && c.painel_online){
+    const a = document.createElement('a');
+    a.href = url; a.target = '_blank'; a.rel = 'noopener'; a.textContent = url;
+    destUrl.append(a);
+  } else destUrl.textContent = url || 'aguardando o túnel…';
+  const dica = $('dicaOnline');
+  dica.hidden = !(url && c.painel_online);
+  if(!dica.hidden){
+    dica.replaceChildren(
+      Object.assign(document.createElement('strong'), { textContent: 'Use o painel de qualquer lugar. ' }),
+      document.createTextNode('Abra o endereço público no celular ou em outro computador e entre com a mesma senha. '
+        + 'Ele se mantém quando você reinicia o painel; só muda depois de npm run parar ou de reiniciar o computador. No computador onde o painel está instalado, '
+        + `http://localhost:${c.porta_painel} funciona sempre.`));
+  }
+  $('uCallback').value = url ? url + '/callback' : 'aguardando o túnel…';
+  $('uWebhook').value = url ? url + '/webhook' : 'aguardando o túnel…';
+  // Só os dois campos do túnel dependem dele: o comando do Claude Code funciona sem túnel.
+  document.querySelectorAll('[data-copiar="uCallback"],[data-copiar="uWebhook"]').forEach((b) => b.disabled = !url);
+
+  // túnel
+  const nomes = { cloudflared:'Cloudflare', localtunnel:'localtunnel', fixa:'domínio próprio' };
+  const est = $('tunelEstado'); est.replaceChildren();
+  if(t.estado === 'online'){
+    est.append(pilula(t.verificado === false ? 'warn' : 'ok', t.verificado === false ? 'no ar, ainda sem resposta de fora' : 'no ar'),
+      document.createTextNode(` via ${nomes[t.provedor] || t.provedor} desde ${dataHora(t.desde)}`));
+  } else if(t.estado === 'iniciando') est.append(pilula('warn', 'abrindo…'));
+  else if(t.estado === 'verificando') est.append(pilula('warn', 'confirmando o endereço…'),
+    document.createTextNode(' — a URL aparece assim que existir na internet (uns segundos)'));
+  else if(t.estado === 'desligado') est.append(pilula('err', 'desligado'), document.createTextNode(' — rode "npm start" (ele abre o túnel)'));
+  else est.append(pilula('err', t.estado || 'desconhecido'), document.createTextNode(t.erro ? ' — ' + t.erro : ''));
+  const hist = (c.historico_urls || []).filter((h) => h.url !== url).slice(0, 3);
+  $('historico').textContent = hist.length ? hist.map((h) => `${h.url} (${dataHora(h.iniciada_em)})`).join(' · ') : 'nenhuma';
+
+  // situação da URL x cadastro no ML
+  const s = c.situacao || {};
+  const box = $('situacao'); box.replaceChildren();
+  $('btnConfirmar').hidden = true;
+  if(!url){
+    box.append(caixa('warn', 'Aguardando o túnel HTTPS abrir.', ['Leva uns 10 segundos depois do "npm start".']));
+  } else if(!c.tem_credenciais){
+    box.append(caixa('warn', 'Cadastre as duas URLs no DevCenter e depois faça o passo 2.',
+      ['Assim que o App ID e a chave estiverem salvos, o painel confere sozinho se o cadastro está certo.']));
+  } else if(s.estado === 'confere'){
+    box.append(caixa('ok', s.fonte === 'ml' ? 'Conferido no Mercado Livre: o seu aplicativo está com estas URLs.'
+      : 'Você confirmou que o aplicativo está com estas URLs.'));
+  } else if(s.estado === 'divergente'){
+    const linhas = [];
+    if(s.anterior) linhas.push(['A URL do túnel mudou. Antes era ', { code: s.anterior }, '.']);
+    if(s.fonte === 'ml'){
+      if(!s.callbackOk) linhas.push(['URI de redirect cadastrada hoje: ', { code: (s.cadastrado?.callback_urls || []).join(', ') || '(nenhuma)' }]);
+      if(!s.webhookOk) linhas.push(['URL de notificação cadastrada hoje: ', { code: s.cadastrado?.webhook || '(nenhuma)' }]);
+    }
+    linhas.push('Abra o DevCenter, troque pelas URLs acima e salve. Depois clique em "Verificar de novo".');
+    box.append(caixa('err', 'O aplicativo no Mercado Livre está com outra URL.', linhas));
+  } else {
+    box.append(caixa('warn', 'Ainda não sei se o aplicativo está com estas URLs.',
+      [c.situacao?.erro_ml ? 'Não consegui ler o cadastro no Mercado Livre: ' + c.situacao.erro_ml : 'Cadastre-as no DevCenter.']));
+  }
+  for(const d of (s.dicas || [])) box.append(caixa('warn', d));
+  // Sem leitura do cadastro no ML, o aluno pode confirmar por conta própria.
+  if(url && c.tem_credenciais && s.fonte !== 'ml' && s.estado !== 'confere') $('btnConfirmar').hidden = false;
+
+  // credenciais
+  const cred = $('credStatus'); cred.replaceChildren();
+  if(c.app_id){
+    if(!$('appId').value) $('appId').placeholder = c.app_id;
+    const linhas = [['App ID salvo: ', { code: c.app_id }]];
+    if(c.app){
+      if(c.app.nome) linhas.push(['Aplicativo: ', c.app.nome]);
+      const faltam = ['authorization_code','client_credentials','refresh_token'].filter((f) => !c.app.fluxos.includes(f));
+      if(faltam.length) linhas.push('Fluxos OAuth que faltam marcar: ' + faltam.join(', '));
+      if(c.app.bloqueado) linhas.push('O Mercado Livre marcou este aplicativo como BLOQUEADO.');
+    }
+    cred.append(caixa(c.app && !c.app.bloqueado ? 'ok' : 'warn',
+      c.app ? 'Credenciais válidas.' : 'Credenciais salvas.', linhas));
+  }
+
+  // contas
+  const ul = $('contas'); ul.replaceChildren();
+  for(const k of (c.lista_contas || [])){
+    const li = document.createElement('li');
+    li.textContent = `${k.nickname} · ${k.site_id} · conectada em ${dataHora(k.conectada_em)}`;
+    ul.appendChild(li);
+  }
+  const pode = !!(url && c.tem_credenciais && !(s.fonte === 'ml' && s.callbackOk === false));
+  const btn = $('btnConectar');
+  btn.setAttribute('aria-disabled', String(!pode));
+  btn.textContent = c.contas ? 'Conectar outra conta' : 'Conectar conta';
+  // Logado no ML com uma conta que já autorizou o app, o ML pula a tela de autorização e
+  // reconecta a MESMA conta na hora (medido em 19/09/2026). Para outra conta, é preciso trocar lá.
+  $('conectarDica').textContent = pode ? (c.contas ? 'Para conectar OUTRA conta: antes, saia do Mercado Livre neste '
+    + 'navegador (ou use uma janela anônima) e entre com a outra conta. Logado na mesma, o ML reconecta ela direto, '
+    + 'sem mostrar a tela de autorização.' : '') : !c.tem_credenciais ? 'Faça o passo 2 primeiro.'
+    : !url ? 'Aguardando o túnel.' : 'Atualize a URI de redirect no DevCenter primeiro.';
+
+  // passos
+  const passo2 = c.tem_credenciais && s.estado === 'confere';
+  $('passo2').className = passo2 ? 'feito' : ''; $('n1').classList.toggle('feito', s.estado === 'confere');
+  $('n2').classList.toggle('feito', !!c.app_id);
+  $('passo3').className = c.contas ? 'feito' : ''; $('n3').classList.toggle('feito', !!c.contas);
+  const atual = !passo2 ? $('passo2') : !c.contas ? $('passo3') : null;
+  document.querySelectorAll('#passos li').forEach((li) => li.removeAttribute('aria-current'));
+  if(atual) atual.setAttribute('aria-current', 'step');
+
+  // scraper
+  const sc = c.scraper;
+  const se = $('scrEstado'); se.replaceChildren();
+  if(!sc){ se.append(pilula('warn', 'não gerenciado'), document.createTextNode(' — suba com "npm start" para ele vir junto')); $('scrUrl').textContent = '—'; }
+  else {
+    const tipo = sc.estado === 'rodando' ? 'ok' : (sc.estado === 'iniciando' || sc.estado === 'reiniciando') ? 'warn' : 'err';
+    const nome = { rodando:'rodando', iniciando:'subindo…', reiniciando:'reiniciando…', indisponivel:'indisponível', parado:'parado' }[sc.estado] || sc.estado;
+    se.append(pilula(tipo, nome));
+    if(sc.reinicios) se.append(document.createTextNode(` · reiniciado ${sc.reinicios}x`));
+    if(sc.erro && sc.estado !== 'rodando') se.append(document.createTextNode(' — ' + sc.erro));
+    $('scrUrl').textContent = sc.url;
+  }
+  $('btnReiniciar').disabled = !c.scraper_gerenciado;
+
+  // Claude Code (MCP). Sem conta conectada ele até liga, mas não tem o que responder —
+  // por isso o estado aqui espelha o passo 3, e não "o servidor está de pé".
+  const m = c.mcp || {};
+  const me = $('mcpEstado'); me.replaceChildren();
+  if(!c.contas){
+    me.append(pilula('warn', 'falta conectar a conta'), document.createTextNode(' — faça o passo 3 acima'));
+  } else {
+    me.append(pilula('ok', 'pronto para usar'));
+    me.append(document.createTextNode(m.escrita === false
+      ? ' — só consulta (ML_MCP_ESCRITA=0 no .env)'
+      : ' — consulta, publica e edita'));
+  }
+  $('mcpPasta').textContent = m.pasta || '—';
+  $('mcpComando').value = m.pasta ? `cd "${m.pasta}" && claude` : '—';
+  document.querySelector('[data-copiar="mcpComando"]').disabled = !m.pasta;
+}
+
+async function carregar(forcar){
+  try{
+    const [c, k] = await Promise.all([api('/api/config' + (forcar ? '?forcar=1' : '')), api('/api/accounts')]);
+    c.lista_contas = k.contas || [];
+    pintar(c);
+    return c;
+  }catch(e){
+    $('aviso').replaceChildren(caixa('err', 'Não consegui falar com o painel.', [e.message]));
+  }
+}
+
+// Atualiza sozinho: rápido enquanto algo está subindo, devagar quando está tudo de pé.
+async function ciclo(){
+  const c = await carregar(false);
+  const subindo = !c || c.tunel?.estado !== 'online' || ['iniciando','reiniciando'].includes(c.scraper?.estado);
+  setTimeout(ciclo, subindo ? 4000 : 20000);
+}
+ciclo();
+
+// ---------- ações ----------
+document.querySelectorAll('[data-copiar]').forEach((b) => b.onclick = async () => {
+  const campo = $(b.dataset.copiar);
+  try{ await navigator.clipboard.writeText(campo.value); }
+  catch{ campo.select(); document.execCommand('copy'); }
+  const antes = b.textContent; b.textContent = 'Copiado'; setTimeout(() => b.textContent = antes, 1500);
+});
+
+$('btnVerificar').onclick = async () => {
+  const b = $('btnVerificar'); b.disabled = true; b.textContent = 'Verificando…';
+  await carregar(true);
+  b.disabled = false; b.textContent = 'Verificar de novo no Mercado Livre';
+};
+
+$('btnConfirmar').onclick = async () => {
+  try{ await post('/api/config/confirmar-url'); await carregar(false); }
+  catch(e){ $('aviso').replaceChildren(caixa('err', 'Não confirmou.', [e.message])); }
+};
+
+$('btnVerSecret').onclick = () => {
+  const i = $('secret'), mostrar = i.type === 'password';
+  i.type = mostrar ? 'text' : 'password';
+  $('btnVerSecret').textContent = mostrar ? 'Ocultar' : 'Mostrar';
+  $('btnVerSecret').setAttribute('aria-pressed', String(mostrar));
+};
+
+$('formCred').onsubmit = async (ev) => {
+  ev.preventDefault();
+  const b = $('btnSalvarCred'); b.disabled = true; b.textContent = 'Validando no Mercado Livre…';
+  const st = $('credStatus');
+  try{
+    const r = await post('/api/config/credenciais', { app_id: $('appId').value, secret: $('secret').value });
+    $('secret').value = ''; $('appId').value = '';
+    await carregar(false);
+    if(r.avisos?.length) st.append(...r.avisos.map((a) => caixa('warn', a)));
+  }catch(e){
+    st.replaceChildren(caixa('err', 'Não salvei.', [e.message]));
+  }finally{ b.disabled = false; b.textContent = 'Salvar e validar'; }
+};
+
+$('btnTestarSessao').onclick = async () => {
+  const b = $('btnTestarSessao'), d = $('scrSessao');
+  b.disabled = true; d.textContent = 'testando (abre uma busca no Mercado Livre, leva uns segundos)…';
+  try{
+    const r = await api('/api/scraper?forcar=1');
+    d.replaceChildren();
+    if(!r.ligado) d.append(pilula('err', 'scraper fora do ar'), document.createTextNode(' ' + (r.motivo || '')));
+    else if(r.sessao === 'valida') d.append(pilula('ok', 'válida'));
+    else if(r.sessao === 'em_uso') d.append(pilula('warn', 'em uso'), document.createTextNode(' — ' + (r.acao || '')));
+    else d.append(pilula('err', 'bloqueada'), document.createTextNode(' — faça o login ou resolva o reCAPTCHA na aba Navegador'));
+  }catch(e){ d.textContent = e.message; }
+  finally{ b.disabled = false; }
+};
+
+$('btnReiniciar').onclick = async () => {
+  try{ await post('/api/scraper/reiniciar'); await carregar(false); }
+  catch(e){ $('aviso').replaceChildren(caixa('err', 'Não reiniciou.', [e.message])); }
+};
+
+$('formSenha').onsubmit = async (ev) => {
+  ev.preventDefault();
+  try{
+    await post('/api/config/senha', { atual: $('senhaAtual').value, nova: $('senhaNova').value });
+    location.href = '/login';
+  }catch(e){ $('senhaStatus').replaceChildren(caixa('err', 'Não trocou.', [e.message])); }
+};
+</script>
+</body>
+</html>
