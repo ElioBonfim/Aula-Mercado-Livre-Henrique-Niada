@@ -297,7 +297,7 @@ async function tratar(msg) {
       const pedida = params.protocolVersion;
       return { protocolVersion: PROTOCOLOS.includes(pedida) ? pedida : PROTOCOLOS[0],
         capabilities: { tools: { listChanged: false } },
-        serverInfo: { name: 'mercado-livre', title: 'Mercado Livre (painel da aula)', version: VERSAO },
+        serverInfo: { name: 'HN-Gestor-ML', title: 'Mercado Livre (painel da aula)', version: VERSAO },
         instructions: 'Ferramentas do painel do Mercado Livre deste computador, na conta já conectada. '
           + 'Comece por ml_contas; para "melhores produtos" use ml_anuncios com sort=vendas_desc e '
           + 'para a curva ABC sort=abc; ml_periodo traz faturamento, lucro e ABC de vários anúncios de '

@@ -107,7 +107,7 @@ function servidor(env = {}) {
   try {
     const ini = await s.pedir(1, 'initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'teste', version: '1' } });
     assert.strictEqual(ini.result.protocolVersion, '2025-06-18', 'devolve a versão que o cliente falou');
-    assert.strictEqual(ini.result.serverInfo.name, 'mercado-livre');
+    assert.strictEqual(ini.result.serverInfo.name, 'HN-Gestor-ML');
     assert.ok(ini.result.capabilities.tools, 'anuncia a capacidade de ferramentas');
 
     // versão desconhecida: responde com a nossa, em vez de repetir a do cliente

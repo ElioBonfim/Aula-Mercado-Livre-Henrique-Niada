@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "mercado-livre": {
+    "HN-Gestor-ML": {
       "command": "node",
       "args": ["mcp.js"],
       "env": {}

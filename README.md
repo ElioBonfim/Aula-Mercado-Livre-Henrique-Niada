@@ -761,7 +761,7 @@ O `mcp.js` é um servidor **MCP local**: ele entrega ao Claude Code (ou a outro 
 > *"quem está na curva A e perdendo venda?"*
 > *"grave custo de R$ 42,30 no MLB1234567890 e me diga a margem"*
 
-**Como ligar.** Abra o Claude Code **na pasta do projeto**. O `.mcp.json` já está no repositório: ele pergunta se você aprova o servidor `mercado-livre` e pronto. Confira com o comando `/mcp` — deve aparecer `mercado-livre: connected`. Nada a instalar: o servidor não tem dependência nenhuma além do próprio Node.
+**Como ligar.** Abra o Claude Code **na pasta do projeto**. O `.mcp.json` já está no repositório: ele pergunta se você aprova o servidor `HN-Gestor-ML` e pronto. Confira com o comando `/mcp` — deve aparecer `HN-Gestor-ML: connected`. Nada a instalar: o servidor não tem dependência nenhuma além do próprio Node.
 
 A tela **Configurações** do painel ensina isso sem sair de lá: mostra o estado (se já dá para usar ou se falta conectar a conta), a pasta do projeto e a linha pronta para colar no Terminal (`cd "…" && claude`), com botão de copiar.
 

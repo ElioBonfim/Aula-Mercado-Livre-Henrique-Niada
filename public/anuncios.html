@@ -236,11 +236,12 @@
   .conta .falta{color:var(--muted);font-weight:400;font-style:italic}
 </style>
 <link rel="stylesheet" href="/layout.css">
+<link rel="stylesheet" href="/tema-hn.css?v=3">
 </head>
 <body>
 <div class="app">
   <aside class="lateral">
-    <div class="marca"><b>ML</b><span>Gestor ML</span></div>
+    <div class="marca"><img class="marca-logo" src="/logo-hn.png" alt="" width="34" height="34"><span class="marca-texto">Gestor ML<a class="marca-autor" href="https://instagram.com/henriqueniada" target="_blank" rel="noopener">por Henrique Niada</a></span></div>
     <nav aria-label="Telas do painel">
       <a href="/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10.5 12 4l8 6.5"/><path d="M6.5 10v9h11v-9"/></svg>Início</a>
       <a href="/publicar.html"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="4.5"/><path d="M12 9v6M9 12h6"/></svg>Publicar</a>
@@ -248,7 +249,7 @@
       <a href="/navegador.html"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M4 12h16M12 4c2.4 2.6 2.4 12.8 0 16M12 4c-2.4 2.6-2.4 12.8 0 16"/></svg>Navegador</a>
       <a href="/configuracao.html"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 8h14M5 16h14"/><circle cx="10" cy="8" r="2.3"/><circle cx="15" cy="16" r="2.3"/></svg>Configurações</a>
     </nav>
-    <p class="lateral-pe">Painel da aula, rodando no seu computador.</p>
+    <p class="lateral-pe"><b>Sistema gratuito</b>Disponibilizado pelo Henrique Niada. Roda no seu computador.</p>
   </aside>
   <div class="conteudo">
 <header>
@@ -329,6 +330,10 @@
     <span id="pagina"></span>
     <button class="ghost" id="prox">próximos →</button>
   </div>
+<div class="hn-credito">
+  <span class="selo-livre">Gratuito</span>
+  <span>Sistema <b>gratuito</b>, disponibilizado pelo <b>Henrique Niada</b>. Roda no seu computador &mdash; seus dados e suas chaves nao saem daqui.</span>
+</div>
 </main>
   </div>
 </div>
@@ -499,15 +504,75 @@ selConta.onchange = async () => {
 };
 
 // ---------- Mercado Ads ----------
+// Razão vazia é '—' e não 0: investir sem vender não é "ACOS zero", é ACOS indefinido.
+const razao = (v, casas = 2) => (v == null ? '—' : v.toFixed(casas));
+const vezes = (v) => (v == null ? '—' : v.toFixed(2).replace('.', ',') + '×');
+
 async function carregarAds(){
+  const corpo = $('adsCorpo');
+  $('ads').hidden = false;
+  corpo.textContent = 'consultando o Mercado Ads…';
+  corpo.style.color = '';
   try{
-    const a = await api('/api/ads/status');
-    $('ads').hidden = false;
-    $('adsCorpo').textContent = a.habilitado
-      ? `Anunciante ativo. ${(a.advertisers||[]).length} advertiser(s) nesta conta.`
-      : a.motivo;
-    $('adsCorpo').style.color = a.habilitado ? 'var(--ok)' : 'var(--muted)';
-  }catch(e){ $('ads').hidden = false; $('adsCorpo').textContent = 'Não consultou o Ads: ' + e.message; }
+    const a = await api(`/api/ads/metricas?dias=${$('fDias').value || 30}`);
+    corpo.replaceChildren();
+
+    if(!a.habilitado){
+      corpo.textContent = a.motivo;
+      corpo.style.color = 'var(--muted)';
+      return;
+    }
+
+    const t = a.total;
+    const kpis = document.createElement('div');
+    kpis.className = 'kpis';
+    kpis.append(
+      kpi(`Investimento ${a.dias} dias`, dinheiro(t.investimento), `${num(t.campanhas)} campanha(s)`),
+      kpi('Receita do anúncio', dinheiro(t.receita), 'direta + indireta'),
+      kpi('ROAS', vezes(t.roas), 'receita ÷ investimento', 'destaque'),
+      kpi('ACOS', t.acos == null ? '—' : pct(t.acos), 'investimento ÷ receita do anúncio',
+        t.acos != null && t.acos > 0.3 ? 'aviso' : ''),
+      kpi('TACOS', t.tacos == null ? '—' : pct(t.tacos), 'investimento ÷ receita da loja'),
+      kpi('Cliques', num(t.cliques), `${num(t.impressoes)} impressões`),
+      kpi('CPC', t.cpc == null ? '—' : dinheiro(t.cpc), `CTR ${t.ctr == null ? '—' : pct(t.ctr)}`),
+      kpi('Conversão do clique', t.cvr == null ? '—' : pct(t.cvr), `${num(t.unidades)} unidade(s)`),
+    );
+    corpo.appendChild(kpis);
+
+    if(a.campanhas.length){
+      const tab = document.createElement('table');
+      tab.className = 'tabPos';
+      const thead = document.createElement('thead');
+      const tr = document.createElement('tr');
+      for(const h of ['Campanha', 'Situação', 'Investido', 'Receita', 'ROAS', 'ACOS', 'Cliques']){
+        const th = document.createElement('th'); th.scope = 'col'; th.textContent = h; tr.appendChild(th);
+      }
+      thead.appendChild(tr); tab.appendChild(thead);
+
+      const tb = document.createElement('tbody');
+      for(const c of a.campanhas){
+        const l = document.createElement('tr');
+        for(const v of [c.nome || c.id, c.status, dinheiro(c.investimento), dinheiro(c.receita),
+          vezes(c.roas), c.acos == null ? '—' : pct(c.acos), num(c.cliques)]){
+          const td = document.createElement('td'); td.textContent = v; l.appendChild(td);
+        }
+        tb.appendChild(l);
+      }
+      tab.appendChild(tb);
+      const rolagem = document.createElement('div');
+      rolagem.style.overflowX = 'auto';
+      rolagem.appendChild(tab);
+      corpo.appendChild(rolagem);
+    }
+
+    const pe = document.createElement('p');
+    pe.className = 'nota';
+    pe.textContent = `Janela de ${a.date_from} a ${a.date_to}. ${a.nota}`;
+    corpo.appendChild(pe);
+  }catch(e){
+    corpo.textContent = 'Não consultou o Ads: ' + e.message;
+    corpo.style.color = 'var(--muted)';
+  }
 }
 
 // ---------- anúncios ----------
@@ -641,9 +706,107 @@ function cartao(it){
   esp.className = 'carregando'; esp.textContent = 'calculando o período…';
   periodo.appendChild(esp);
 
+  // Análise embutida: abre no próprio cartão em vez de roubar a tela com um modal.
+  // O conteúdo só é buscado na primeira abertura.
+  const analise = document.createElement('section');
+  analise.className = 'analise';
+  analise.id = 'analise-' + it.id;
+  analise.hidden = true;
+
+  const verAnalise = document.createElement('button');
+  verAnalise.type = 'button';
+  verAnalise.className = 'ghost btnAnalise';
+  verAnalise.setAttribute('aria-expanded', 'false');
+  verAnalise.setAttribute('aria-controls', analise.id);
+  verAnalise.innerHTML = '<span class="seta" aria-hidden="true">▾</span> Análise';
+  verAnalise.onclick = () => {
+    const abrindo = analise.hidden;
+    analise.hidden = !abrindo;
+    li.classList.toggle('aberto', abrindo);
+    verAnalise.setAttribute('aria-expanded', String(abrindo));
+    if(abrindo && !analise.dataset.pronto) pintarAnalise(it.id, analise);
+  };
+  acoes.insertBefore(verAnalise, menu);
+
   li.dataset.id = it.id;
-  li.append(img, info, campos, acoes, periodo);
+  li.append(img, info, campos, acoes, periodo, analise);
   return li;
+}
+
+// ---------- análise dentro do cartão ----------
+// Mesmos dados do modal de análise, pintados no lugar. Reusa os helpers de sempre
+// (kpi/num/dinheiro/pct/grafico); o modal continua existindo para quem preferir.
+async function pintarAnalise(id, alvo, dias){
+  alvo.innerHTML = '<p class="nota">carregando…</p>';
+  try{
+    const janela = dias || $('fDias').value || 30;
+    const a = await api(`/api/items/${id}/analytics?dias=${janela}`);
+    const D = a.janela.dias, V = a.vendas, vis = a.visitas || {};
+    alvo.innerHTML = '';
+
+    const g = document.createElement('div');
+    g.className = 'kpis';
+    g.append(
+      kpi(`Faturamento ${D} dias`, dinheiro(V.faturamento), `ticket ${dinheiro(V.ticket_medio)}`),
+      kpi(`Lucro real ${D} dias`, dinheiro(V.lucro), V.lucro == null ? 'informe o custo' : 'já sem comissão e frete', 'destaque'),
+      kpi('Margem de contribuição', pct(V.margem), 'por unidade, no preço de hoje'),
+      kpi(`Vendas ${D} dias`, `${num(V.unidades)} un.`, `${num(V.pedidos)} pedido(s) pago(s)`),
+      kpi(`Visitas ${D} dias`, num(vis.janela), `${num(vis.historico)} desde sempre`),
+      kpi('Conversão', pct(V.conversao), 'pedidos ÷ visitas',
+        V.conversao != null && V.conversao < 0.01 ? 'aviso' : ''),
+      kpi('Vendidos (sempre)', num(V.vendidos_historico), 'histórico do anúncio'),
+      kpi('Qualidade', a.item.health == null ? '—' : Math.round(a.item.health * 100) + '%',
+        'health do Mercado Livre', a.item.health != null && a.item.health < 0.8 ? 'aviso' : ''),
+    );
+    alvo.appendChild(g);
+
+    // Anúncio patrocinado. Só aparece se o item teve movimento na janela —
+    // conta sem anunciante ou item fora de campanha não ganha faixa vazia.
+    if(a.ads && a.ads.investimento != null){
+      const d = a.ads;
+      const t = document.createElement('h4');
+      t.textContent = `Mercado Ads · ${D} dias`;
+      t.style.cssText = 'font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 10px';
+      const ga = document.createElement('div');
+      ga.className = 'kpis';
+      ga.append(
+        kpi('Investimento', dinheiro(d.investimento), d.status ? `hoje: ${d.status}` : ''),
+        kpi('Receita do anúncio', dinheiro(d.receita), 'direta + indireta'),
+        kpi('ROAS', vezes(d.roas), 'receita ÷ investimento', 'destaque'),
+        kpi('ACOS', d.acos == null ? '—' : pct(d.acos), 'investimento ÷ receita',
+          d.acos != null && d.acos > 0.3 ? 'aviso' : ''),
+        kpi('TACOS', d.tacos == null ? '—' : pct(d.tacos), 'sobre a receita da loja'),
+        kpi('Cliques', num(d.cliques), `${num(d.impressoes)} impressões`),
+      );
+      alvo.append(t, ga);
+    }
+
+    const datas = vis.datas || [];
+    const br = (d) => d.slice(8, 10) + '/' + d.slice(5, 7);
+    if(vis.serie && vis.serie.length){
+      const w = document.createElement('div');
+      w.className = 'grafico';
+      const h = document.createElement('h4');
+      h.textContent = `Visitas nos últimos ${D} dias`;
+      w.append(h, grafico(vis.serie, { altura: 110,
+        descricao: `Visitas nos últimos ${D} dias`,
+        rotulo: (i, v) => `${datas[i] ? br(datas[i]) : ''}: ${num(v)} visita(s)` }));
+      alvo.appendChild(w);
+    }
+
+    const pe = document.createElement('p');
+    pe.className = 'nota';
+    pe.textContent = `Janela de ${D} dias. Para trocar o período, use o filtro no topo da página.`;
+    alvo.appendChild(pe);
+
+    alvo.dataset.pronto = '1';
+  }catch(e){
+    alvo.innerHTML = '';
+    const p = document.createElement('p');
+    p.className = 'nota';
+    p.textContent = 'não foi possível carregar a análise: ' + e.message;
+    alvo.appendChild(p);
+  }
 }
 
 // ---------- gráfico de linha (sem biblioteca) ----------
@@ -1366,8 +1529,22 @@ async function abrirAnalytics(id, dias, { focarCusto = false } = {}){
       ['Estoque', num(a.item.estoque)],
       ['Anúncio de catálogo', a.item.catalogo ? 'sim' : 'não'],
       ['No ar desde', new Date(a.item.criado_em).toLocaleDateString('pt-BR')],
-      ['Mercado Ads', a.ads ? `${a.ads.status} · campanha ${a.ads.campanha}` : 'fora de campanha'],
+      ['Mercado Ads', a.ads ? [a.ads.status, a.ads.campanha && `campanha ${a.ads.campanha}`].filter(Boolean).join(' · ') || 'sem status' : 'fora de campanha'],
     ])));
+    // Números do anúncio patrocinado. O status acima é de hoje; estes são do período,
+    // então um item hoje pausado ainda pode ter faturado na janela.
+    if(a.ads && a.ads.investimento != null){
+      const d = a.ads;
+      cols.appendChild(bloco('Mercado Ads no período', linhas([
+        ['Investimento', dinheiro(d.investimento)],
+        ['Receita do anúncio', dinheiro(d.receita)],
+        ['ROAS', vezes(d.roas)],
+        ['ACOS', d.acos == null ? '—' : pct(d.acos)],
+        ['TACOS', d.tacos == null ? '—' : pct(d.tacos)],
+        ['Cliques', `${num(d.cliques)} de ${num(d.impressoes)} impressões`],
+        ['CPC', d.cpc == null ? '—' : dinheiro(d.cpc)],
+      ])));
+    }
     cols.appendChild(bloco('Reputação e contato', linhas([
       ['Avaliações', a.avaliacoes ? `${num(a.avaliacoes.total)}${a.avaliacoes.nota ? ` · nota ${a.avaliacoes.nota.toFixed(1)}` : ''}` : null],
       ['Perguntas', a.perguntas ? num(a.perguntas.total) : null],

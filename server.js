@@ -1202,7 +1202,9 @@ const routes = {
   // ----- Mercado Ads -----
   'GET /api/ads/status': async () => {
     try {
-      const a = await ml('/advertising/advertisers?product_id=PADS', { headers: { 'api-version': '2' } });
+      // Api-Version com maiúsculas e valor 1: só esta rota é assim. Todo o resto
+      // do Product Ads usa api-version: 2 minúsculo. Trocar quebra a descoberta.
+      const a = await ml('/advertising/advertisers?product_id=PADS', { headers: { 'Api-Version': '1' } });
       return { habilitado: true, advertisers: a.advertisers || a };
     } catch (e) {
       if (e.status === 404) {
@@ -1339,7 +1341,141 @@ const routes = {
     D.produtoSalvar(conta.ml_user_id, item, { ...payload, title: item.title || payload.title || payload.family_name });
     return { id: item.id, permalink: item.permalink, status: item.status, description_ok, conta: conta.nickname };
   },
+
+  // ---------- Mercado Ads: os números, não só o status ----------
+  // Caminhos medidos em conta real (ver references/api-product-ads.md do plugin).
+  // A rota antiga /advertising/product_ads/ads/{item_id} devolve status e campanha;
+  // métrica só existe sob o ANUNCIANTE, que é o que estas rotas usam.
+  'GET /api/ads/metricas': async (q) => {
+    const dias = Math.min(90, Math.max(1, Number(q.dias) || 30)); // a API recusa acima de 90
+    const { date_from, date_to } = janelaAds(dias);
+
+    const adv = await anunciante();
+    if (!adv) {
+      return {
+        habilitado: false, dias, date_from, date_to,
+        motivo: 'Esta conta não tem anunciante no Mercado Ads. Ative a publicidade no '
+          + 'painel do Mercado Livre (Anúncios → Publicidade) e recarregue.',
+      };
+    }
+
+    const campanhas = await paginarAds(
+      `/advertising/${siteAtivo()}/advertisers/${adv.advertiser_id}/product_ads/campaigns/search`,
+      { date_from, date_to }, 'results',
+    );
+
+    const linhas = campanhas.map((c) => ({
+      id: c.id, nome: c.name, status: c.status,
+      ...numerosAds(c.metrics || c),
+    })).sort((a, b) => b.investimento - a.investimento);
+
+    return {
+      habilitado: true, dias, date_from, date_to,
+      advertiser_id: adv.advertiser_id,
+      campanhas: linhas,
+      total: somarAds(linhas),
+      // Sem isto o instrutor lê o número de ontem achando que é o de hoje.
+      nota: 'O Mercado Livre fecha os dados do dia anterior às 10h (horário de Brasília).',
+    };
+  },
 };
+
+// ---------- apoio do Mercado Ads ----------
+
+// Métricas que a API entrega por campanha e por anúncio. Pedir o que não existe
+// derruba a resposta inteira, então esta lista é fechada.
+const METRICAS_ADS = ['clicks', 'prints', 'ctr', 'cost', 'cpc', 'cvr', 'roas', 'acos',
+  'total_amount', 'direct_amount', 'indirect_amount', 'organic_units_amount', 'units_quantity'].join(',');
+
+// date_from/date_to são obrigatórios: sem eles a resposta vem sem métrica nenhuma.
+// date_to é ontem porque o dia corrente ainda não fechou.
+function janelaAds(dias) {
+  const dia = (d) => new Date(d).toISOString().slice(0, 10);
+  const fim = Date.now() - 864e5;
+  return { date_from: dia(fim - (dias - 1) * 864e5), date_to: dia(fim) };
+}
+
+let advCache = null;
+async function anunciante() {
+  const conta = D.contaAtiva()?.ml_user_id ?? null;
+  if (advCache && advCache.conta === conta) return advCache.adv;
+  let adv = null;
+  try {
+    const r = await ml('/advertising/advertisers?product_id=PADS', { headers: { 'Api-Version': '1' } });
+    adv = (r.advertisers || [])[0] || null;
+  } catch (e) {
+    if (e.status !== 404) throw e;
+  }
+  advCache = { conta, adv };
+  return adv;
+}
+
+// metrics_summary resume só a PÁGINA, não o resultado: medido com limit=1 dando
+// R$ 724,20 e limit=50 dando R$ 20.853,13 no mesmo período. O total só sai
+// somando todas as páginas, então é isso que esta função faz.
+async function paginarAds(caminho, params, chave) {
+  const LIMITE = 50, TETO = 40; // 2000 registros; acima disso algo está errado
+  const tudo = [];
+  for (let pagina = 0; pagina < TETO; pagina++) {
+    const qs = new URLSearchParams({ ...params, metrics: METRICAS_ADS, limit: LIMITE, offset: pagina * LIMITE });
+    const r = await ml(`${caminho}?${qs}`, { headers: { 'api-version': '2' } });
+    const lote = r[chave] || [];
+    tudo.push(...lote);
+    if (lote.length < LIMITE) break;
+  }
+  return tudo;
+}
+
+const n = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+
+// Só os valores que se somam. Razão fica de fora de propósito — ver recalcular().
+function numerosAds(m) {
+  const investimento = n(m.cost);
+  const receita = n(m.total_amount) || n(m.direct_amount) + n(m.indirect_amount);
+  return recalcular({
+    investimento, receita,
+    direta: n(m.direct_amount), indireta: n(m.indirect_amount),
+    organica: n(m.organic_units_amount),
+    cliques: n(m.clicks), impressoes: n(m.prints), unidades: n(m.units_quantity),
+  });
+}
+
+// ROAS, ACOS, TACOS, CTR, CPC e CVR são razões: somá-las ou tirar média delas dá
+// número errado. Sempre recalcular a partir dos totais.
+function recalcular(s) {
+  const div = (a, b) => (b > 0 ? a / b : null);
+  return {
+    ...s,
+    ctr: div(s.cliques, s.impressoes),
+    cpc: div(s.investimento, s.cliques),
+    cvr: div(s.unidades, s.cliques),
+    roas: div(s.receita, s.investimento),
+    acos: div(s.investimento, s.receita),
+    tacos: div(s.investimento, s.receita + s.organica),
+  };
+}
+
+// Números de UM anúncio na janela. Devolve null quando a conta não anuncia ou
+// quando o item nunca entrou em campanha — o cartão simplesmente não mostra a faixa.
+async function metricasDoItem(id, dias) {
+  const adv = await anunciante();
+  if (!adv) return null;
+  const { date_from, date_to } = janelaAds(Math.min(90, Math.max(1, Number(dias) || 30)));
+  const achados = await paginarAds(
+    `/advertising/${siteAtivo()}/advertisers/${adv.advertiser_id}/product_ads/ads/search`,
+    { date_from, date_to, 'filters[item_id]': id }, 'results',
+  );
+  if (!achados.length) return null;
+  // Um item pode estar em mais de uma campanha: soma as linhas e recalcula as razões.
+  return { ...somarAds(achados.map((a) => numerosAds(a.metrics || a))), janela: { date_from, date_to, dias } };
+}
+
+function somarAds(linhas) {
+  const campos = ['investimento', 'receita', 'direta', 'indireta', 'organica', 'cliques', 'impressoes', 'unidades'];
+  const s = Object.fromEntries(campos.map((c) => [c, 0]));
+  for (const l of linhas) for (const c of campos) s[c] += n(l[c]);
+  return { ...recalcular(s), campanhas: linhas.length };
+}
 
 // ---------- rotas com parâmetro no caminho ----------
 const rotasParam = [
@@ -1390,7 +1526,7 @@ const rotasParam = [
     const j = janela(dias);
     const nada = () => null;
 
-    const [item, visitas, historico, perguntas, avaliacoes, ads] = await Promise.all([
+    const [item, visitas, historico, perguntas, avaliacoes, ads, , adsMetricas] = await Promise.all([
       ml(`/items/${id}`),
       ml(`/items/${id}/visits/time_window?last=${dias + 1}&unit=day`).catch(nada),
       ml(`/visits/items?ids=${id}&date_from=${j.primeiro}&date_to=${j.ultimo}`).catch(nada),
@@ -1398,6 +1534,7 @@ const rotasParam = [
       ml(`/reviews/item/${id}`).catch(nada),
       ml(`/advertising/product_ads/ads/${id}`, { headers: { 'api-version': '2' } }).catch(nada),
       sincronizarVendas(conta, dias),
+      metricasDoItem(id, dias).catch(nada),
     ]);
 
     // Pedidos da janela saem da cópia local (a mesma da listagem): sem o teto de 200
@@ -1476,7 +1613,17 @@ const rotasParam = [
         total: avaliacoes.paging?.total ?? 0,
         nota: notas.length ? notas.reduce((a, b) => a + b, 0) / notas.length : null,
       } : null,
-      ads: ads ? { status: ads.status, campanha: ads.campaign_id, grupo: ads.ad_group_id } : null,
+      // status e campanha vêm do anúncio; os números só existem sob o anunciante.
+      // O status é de HOJE — um item em hold agora pode ter faturado na janela,
+      // por isso os dois vêm separados e nenhum filtra o outro.
+      ads: ads || adsMetricas
+        ? {
+          status: ads?.status ?? null,
+          campanha: ads?.campaign_id ?? null,
+          grupo: ads?.ad_group_id ?? null,
+          ...(adsMetricas || {}),
+        }
+        : null,
       tendencias: (tendencias || []).slice(0, 8).map((t) => t.keyword),
     };
   } },
